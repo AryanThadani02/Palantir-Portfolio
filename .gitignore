@@ -1,0 +1,5 @@
+node_modules
+dist
+raw-photos
+# Raw source files (large PDFs, original logos); processed copies live in public/
+assets/

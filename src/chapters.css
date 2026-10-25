@@ -1,0 +1,1066 @@
+/* About (pinned manifesto + bento), Experience (interactive index), Work (stacking project cards). */
+
+/* ---------- About (light) ---------- */
+
+.about__run {
+  position: relative;
+  height: 250vh;
+}
+
+.about__sticky {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100vh;
+  padding: 0 var(--gutter);
+}
+
+.about__sticky .section-head {
+  position: absolute;
+  top: 110px;
+  left: var(--gutter);
+  right: var(--gutter);
+  margin: 0;
+}
+
+.manifesto {
+  max-width: 1300px;
+  font-size: clamp(34px, 4.6vw, 80px);
+  font-weight: 400;
+  line-height: 1.12;
+  letter-spacing: -0.04em;
+}
+
+/* Scrubbed: each token's --t runs 0 → 1 as the run's progress passes it. */
+.mw,
+.mchip {
+  --t: clamp(0, calc(var(--p, 0) * (var(--n) + 4) - var(--i)), 1);
+  margin-right: 0.24em;
+}
+
+.mw {
+  display: inline-block;
+  opacity: calc(0.12 + var(--t) * 0.88);
+  transform: translateY(calc((1 - var(--t)) * 0.12em));
+  filter: blur(calc((1 - var(--t)) * 3px));
+}
+
+.mchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  height: 0.9em;
+  padding: 0 0.34em 0 0.28em;
+  border-radius: 999px;
+  font-size: 0.62em;
+  vertical-align: 0.16em;
+  letter-spacing: -0.02em;
+  /* Grows in from zero width, so the line opens up around it instead of leaving a hole. */
+  max-width: calc(var(--t) * 8em);
+  margin-right: calc(var(--t) * 0.24em);
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: var(--t);
+  transform: scale(calc(0.6 + var(--t) * 0.4));
+  transform-origin: left center;
+}
+
+.mchip .icon-mark {
+  width: 0.8em;
+  height: 0.8em;
+}
+
+.mchip b {
+  font-weight: 450;
+}
+
+.mchip--blue {
+  background: var(--accent);
+  color: #fff;
+}
+
+.mchip--ink {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.mchip--line {
+  border: 1.5px solid var(--ink);
+}
+
+.bento {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-areas:
+    'now now bars ring'
+    'now now certs years'
+    'place place place place';
+  gap: 14px;
+  padding-top: 4vh;
+}
+
+.bento__card {
+  --mx: -500px;
+  --my: -500px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 230px;
+  padding: 24px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    radial-gradient(380px circle at var(--mx) var(--my), color-mix(in srgb, var(--accent) 11%, transparent), transparent 65%),
+    color-mix(in srgb, var(--bg) 35%, #ffffff);
+  transition:
+    opacity 1.1s var(--ease) var(--d, 0ms),
+    transform 0.6s var(--ease),
+    box-shadow 0.6s var(--ease),
+    border-color 0.6s var(--ease);
+}
+
+.bento__card:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: 0 30px 60px -36px rgba(11, 15, 23, 0.45);
+}
+
+.bento__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.bento__num {
+  font-size: clamp(48px, 4.6vw, 80px);
+  line-height: 1;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+.bento__unit,
+.bento__foot,
+.bento__body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.bento__foot {
+  margin-top: auto;
+  color: var(--muted);
+}
+
+.live-dot {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+.live-dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 1px solid #22c55e;
+  border-radius: 50%;
+  animation: live 2s var(--ease) infinite;
+}
+
+@keyframes live {
+  from { transform: scale(0.5); opacity: 1; }
+  to { transform: scale(1.8); opacity: 0; }
+}
+
+/* The anchor card is dark, like a Foundry app. */
+.bento__now {
+  grid-area: now;
+  justify-content: space-between;
+  border-color: transparent;
+  background:
+    radial-gradient(420px circle at var(--mx) var(--my), rgba(76, 144, 240, 0.22), transparent 65%),
+    radial-gradient(120% 90% at 100% 0%, rgba(76, 144, 240, 0.25), transparent 55%),
+    #0b0f17;
+  color: #f2f3f5;
+}
+
+.bento__now .bento__kicker,
+.bento__now .bento__body {
+  color: #a3abb8;
+}
+
+.now {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.now .logo-tile {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+}
+
+.now__role {
+  font-size: clamp(30px, 3vw, 52px);
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+
+.now__org {
+  margin-top: 6px;
+  font-size: 15px;
+  color: #a9c7ff;
+}
+
+.bento__now .bento__body {
+  max-width: 460px;
+  font-size: 16px;
+}
+
+.now__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.now__tags span {
+  padding: 6px 11px;
+  border: 1px solid rgba(242, 243, 245, 0.16);
+  border-radius: 999px;
+  font-size: 12px;
+  color: #d5dae3;
+}
+
+.bento__bars { grid-area: bars; }
+.bento__ring { grid-area: ring; }
+.bento__certs { grid-area: certs; }
+.bento__years { grid-area: years; }
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 70px;
+  margin-top: auto;
+}
+
+.bars span {
+  flex: 1;
+  height: var(--h);
+  border-radius: 4px 4px 0 0;
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: transform 1.2s var(--ease) calc(0.25s + var(--i) * 0.07s);
+}
+
+.bars span:last-child {
+  background: var(--accent);
+}
+
+.is-in .bars span {
+  transform: none;
+}
+
+.ring {
+  position: relative;
+  align-self: center;
+  width: 140px;
+  height: 140px;
+  margin: auto 0;
+}
+
+.ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ring circle {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 9;
+}
+
+.ring circle.ring__fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset 2s var(--ease) 0.3s;
+}
+
+.is-in .ring circle.ring__fill {
+  stroke-dashoffset: 20;
+}
+
+.ring__num {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 38px;
+  letter-spacing: -0.05em;
+}
+
+.badges {
+  display: flex;
+  margin-top: auto;
+}
+
+.badges span {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin-left: -14px;
+  border: 3px solid color-mix(in srgb, var(--bg) 35%, #ffffff);
+  border-radius: 50%;
+  background: #0b0f17;
+  color: #fff;
+  transition: transform 0.6s var(--ease) calc(var(--i) * 0.04s);
+}
+
+.badges span:first-child {
+  margin-left: 0;
+}
+
+.badges .icon-mark {
+  width: 16px;
+  height: 16px;
+}
+
+.badges b {
+  margin-top: -4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.bento__certs:hover .badges span {
+  transform: translateX(calc(var(--i) * 16px)) rotate(calc(var(--i) * 6deg));
+}
+
+.domains {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.domains span {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  font-size: 12px;
+}
+
+.bento__place {
+  grid-area: place;
+  flex-direction: row;
+  align-items: center;
+  gap: 4vw;
+  min-height: 0;
+}
+
+.bento__city {
+  font-size: clamp(32px, 3.4vw, 56px);
+  letter-spacing: -0.045em;
+}
+
+.bento__clock {
+  font-family: var(--mono);
+  font-size: clamp(18px, 1.6vw, 26px);
+  font-variant-numeric: tabular-nums;
+}
+
+.bento__clock span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.bento__cta {
+  display: inline-flex;
+  gap: 10px;
+  margin-left: auto;
+  padding: 14px 22px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 15px;
+  transition: transform 0.5s var(--ease), background 0.4s;
+}
+
+.bento__cta:hover {
+  background: var(--accent);
+  transform: translateY(-2px);
+}
+
+/* ---------- Experience (dark): interactive index ---------- */
+
+.xp__title {
+  margin-bottom: 8vh;
+  font-size: clamp(44px, 6vw, 104px);
+  font-weight: 400;
+  line-height: 0.96;
+  letter-spacing: -0.05em;
+}
+
+.xp__title em {
+  font-style: normal;
+  color: color-mix(in srgb, var(--ink) 38%, transparent);
+}
+
+.xp__title[data-reveal] {
+  opacity: 1;
+  transform: none;
+}
+
+.xp__list {
+  border-bottom: 1px solid var(--line);
+}
+
+.xrow {
+  position: relative;
+  border-top: 1px solid var(--line);
+}
+
+.xrow.is-dim {
+  opacity: 0.55;
+}
+
+.xrow {
+  transition: opacity 0.5s var(--ease);
+}
+
+.xrow__head {
+  position: relative;
+  z-index: 0;
+  display: grid;
+  grid-template-columns: 56px 190px minmax(0, 1fr) auto 44px;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  padding: 3.4vh 0;
+  text-align: left;
+}
+
+/* Hover sweep rises from the bottom of the row. */
+.xrow__head::before {
+  content: '';
+  position: absolute;
+  inset: 0 calc(var(--gutter) * -1);
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(76, 144, 240, 0.16), rgba(76, 144, 240, 0.02));
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: transform 0.6s var(--ease);
+}
+
+.xrow__head:hover::before,
+.xrow.is-open .xrow__head::before {
+  transform: none;
+}
+
+.xrow__index,
+.xrow__period {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.xrow__index {
+  color: var(--accent-soft);
+}
+
+.xrow__title {
+  font-size: clamp(28px, 3.4vw, 58px);
+  line-height: 1;
+  letter-spacing: -0.045em;
+  transition: transform 0.6s var(--ease);
+}
+
+.xrow__head:hover .xrow__title,
+.xrow.is-open .xrow__title {
+  transform: translateX(16px);
+}
+
+/* Hovering a row slides its headline impact in beside the title — inline, so it never covers text. */
+.xrow__impact {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 18px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  letter-spacing: 0;
+  vertical-align: middle;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-12px) scale(0.92);
+  transition: opacity 0.45s var(--ease), transform 0.6s var(--ease);
+}
+
+.xrow__impact i {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.xrow__head:hover .xrow__impact,
+.xrow.is-open .xrow__impact {
+  opacity: 1;
+  transform: none;
+}
+
+.xrow__org .logo-tile {
+  transition: transform 0.6s var(--ease), box-shadow 0.6s var(--ease);
+}
+
+.xrow__head:hover .xrow__org .logo-tile {
+  transform: translateY(-3px) scale(1.12);
+  box-shadow: 0 10px 24px -8px rgba(76, 144, 240, 0.6);
+}
+
+.xrow__org {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+
+.xrow__org .logo-tile {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+}
+
+.xrow__toggle {
+  position: relative;
+  justify-self: end;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  transition: transform 0.6s var(--ease), background 0.4s, border-color 0.4s;
+}
+
+.xrow__toggle::before,
+.xrow__toggle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 1.5px;
+  margin: -0.75px 0 0 -6px;
+  background: var(--ink);
+}
+
+.xrow__toggle::after {
+  transform: rotate(90deg);
+}
+
+.xrow.is-open .xrow__toggle {
+  transform: rotate(135deg);
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.xrow__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.8s var(--ease);
+}
+
+.xrow.is-open .xrow__body {
+  grid-template-rows: 1fr;
+}
+
+.xrow__inner {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 12px 48px;
+  min-height: 0;
+  padding-left: 80px;
+  overflow: hidden;
+}
+
+.xrow.is-open .xrow__inner {
+  padding-bottom: 4vh;
+}
+
+.xrow__facts {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.xrow__facts dt {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.xrow__facts dd {
+  margin-top: 4px;
+  font-size: 15px;
+}
+
+.xrow__points {
+  display: grid;
+  gap: 10px;
+}
+
+.xrow__points li {
+  position: relative;
+  padding-left: 22px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.xrow__points li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.78em;
+  width: 10px;
+  height: 1px;
+  background: var(--accent);
+}
+
+.xrow__inner .tags {
+  grid-column: 2;
+  margin-top: 8px;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tags li {
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--ink-2);
+  transition: border-color 0.3s, color 0.3s;
+}
+
+.tags li:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+/* Expanded rows: copy rises in once the row has opened. */
+.xrow__inner > * {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.6s var(--ease), transform 0.8s var(--ease);
+}
+
+.xrow.is-open .xrow__inner > * {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.25s;
+}
+
+.xrow.is-open .xrow__inner > *:nth-child(2) { transition-delay: 0.33s; }
+.xrow.is-open .xrow__inner > *:nth-child(3) { transition-delay: 0.41s; }
+
+/* ---------- Work (light): stacking project cards ---------- */
+
+.work__deck {
+  padding-bottom: 6vh;
+}
+
+.pcard {
+  position: sticky;
+  top: calc(96px + var(--k) * 22px);
+  height: calc(100vh - 140px);
+  margin-bottom: 8vh;
+  transform: scale(calc(1 - var(--under, 0) * 0.06));
+  transform-origin: 50% 0;
+  filter: brightness(calc(1 - var(--under, 0) * 0.12));
+}
+
+.pcard__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 7fr);
+  align-items: center;
+  gap: 4vw;
+  height: 100%;
+  padding: clamp(24px, 3.4vw, 56px);
+  border: 1px solid var(--line);
+  border-radius: 30px;
+  background: #ffffff;
+  box-shadow: 0 40px 90px -50px rgba(11, 15, 23, 0.45);
+}
+
+.pcard__top {
+  display: flex;
+  gap: 18px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pcard__index {
+  color: var(--accent);
+}
+
+.pcard__title {
+  margin-top: 28px;
+  font-size: clamp(36px, 3.8vw, 66px);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+
+.pcard__summary {
+  margin-top: 20px;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.pcard__outcome {
+  display: grid;
+  gap: 6px;
+  margin-top: 36px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.pcard__value {
+  font-size: clamp(44px, 4vw, 72px);
+  line-height: 1;
+  letter-spacing: -0.05em;
+  color: var(--accent);
+}
+
+.pcard__label {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* A product window, like a Foundry app. */
+.mock {
+  overflow: hidden;
+  border-radius: 18px;
+  background: #0b0f17;
+  color: #e6ebf3;
+  box-shadow: 0 30px 60px -30px rgba(11, 15, 23, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.mock__bar,
+.mock__foot {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 18px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #8a919c;
+}
+
+.mock__bar {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.mock__dots {
+  display: flex;
+  gap: 6px;
+}
+
+.mock__dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2a3140;
+}
+
+.mock__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: #86efac;
+}
+
+.mock__foot {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.mock__foot b {
+  font-weight: 500;
+  color: #f2f3f5;
+}
+
+.mock__build {
+  margin-left: auto;
+}
+
+.dag {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 10px 8px 6px;
+}
+
+.dag__label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  fill: #6f9be8;
+}
+
+.dag__edge {
+  fill: none;
+  stroke: rgba(169, 199, 255, 0.2);
+  stroke-width: 1.5;
+}
+
+/* A soft wave of light runs along each edge, one after another down the lane. */
+.dag__flow {
+  fill: none;
+  stroke: #a9c7ff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 18 82;
+  stroke-dashoffset: 100;
+  opacity: 0;
+  filter: drop-shadow(0 0 4px #4c90f0);
+}
+
+.is-live .dag__flow {
+  animation: dag-flow 3.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation-delay: calc(var(--i) * 0.9s + var(--lane) * 0.4s + 1s);
+}
+
+@keyframes dag-flow {
+  0% { stroke-dashoffset: 100; opacity: 0; }
+  10% { opacity: 1; }
+  45% { stroke-dashoffset: 0; opacity: 1; }
+  55%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+.dag__node {
+  opacity: 0;
+  transition: opacity 0.7s var(--ease);
+  transition-delay: calc(var(--lane) * 0.15s + var(--i) * 0.12s);
+}
+
+.is-live .dag__node {
+  opacity: 1;
+}
+
+.dag__node rect {
+  fill: #141a26;
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 1;
+}
+
+.dag__node text {
+  font-family: var(--sans);
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  fill: #e6ebf3;
+}
+
+.dag__node--in rect {
+  stroke: rgba(76, 144, 240, 0.6);
+}
+
+.dag__node--out rect {
+  fill: #2459d6;
+  stroke: none;
+}
+
+.dag__node--out text {
+  fill: #ffffff;
+}
+
+/* An arc of light circles each node as the wave reaches it. */
+.dag__node rect.dag__ring {
+  fill: none;
+  stroke: #a9c7ff;
+  stroke-width: 2;
+  stroke-dasharray: 24 76;
+  stroke-dashoffset: 100;
+  opacity: 0;
+}
+
+.is-live .dag__node rect.dag__ring {
+  animation: dag-ring 3.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation-delay: calc(var(--i) * 0.9s + var(--lane) * 0.4s + 0.6s);
+}
+
+@keyframes dag-ring {
+  0% { stroke-dashoffset: 100; opacity: 0; }
+  8% { opacity: 1; }
+  40% { stroke-dashoffset: 0; opacity: 1; }
+  50%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+/* The vertical flow list is the phone version of the DAG. */
+.pcard .diagram {
+  display: none;
+}
+
+/* ---------- Phones ---------- */
+
+@media (max-width: 900px), (max-aspect-ratio: 85/100) {
+  .about__run {
+    height: 220vh;
+  }
+
+  .about__sticky .section-head {
+    top: 92px;
+  }
+
+  .manifesto {
+    font-size: clamp(30px, 8.6vw, 46px);
+  }
+
+  .bento {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      'now now'
+      'bars ring'
+      'certs years'
+      'place place';
+    gap: 10px;
+  }
+
+  .bento__card {
+    min-height: 190px;
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .bento__num {
+    font-size: 40px;
+    white-space: nowrap;
+  }
+
+  .bento__bars .bento__num {
+    font-size: 32px;
+  }
+
+  .ring {
+    width: 108px;
+    height: 108px;
+  }
+
+  .ring__num {
+    font-size: 28px;
+  }
+
+  .badges span {
+    width: 42px;
+    height: 42px;
+  }
+
+  .bento__place {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .bento__cta {
+    margin-left: 0;
+  }
+
+  .xrow__head {
+    grid-template-columns: 1fr 40px;
+    grid-template-areas:
+      'period toggle'
+      'title toggle'
+      'org org';
+    gap: 10px 14px;
+    padding: 22px 0;
+  }
+
+  .xrow__index {
+    display: none;
+  }
+
+  .xrow__period { grid-area: period; }
+  .xrow__title { grid-area: title; font-size: 30px; }
+  .xrow__org { grid-area: org; white-space: normal; }
+  .xrow__toggle { grid-area: toggle; }
+
+  .xrow__head:hover .xrow__title,
+  .xrow.is-open .xrow__title {
+    transform: none;
+  }
+
+  .xrow__inner {
+    grid-template-columns: 1fr;
+    padding-left: 0;
+  }
+
+  .xrow__inner .tags {
+    display: flex;
+    grid-column: 1;
+  }
+
+  .xrow__impact {
+    display: none;
+  }
+
+  .pcard {
+    position: relative;
+    top: 0;
+    height: auto;
+    margin-bottom: 5vh;
+    transform: none;
+    filter: none;
+  }
+
+  .pcard__inner {
+    grid-template-columns: 1fr;
+    gap: 5vh;
+    padding: 24px 20px;
+    border-radius: 22px;
+  }
+
+  .pcard .mock {
+    display: none;
+  }
+
+  .pcard .diagram {
+    display: grid;
+  }
+}
