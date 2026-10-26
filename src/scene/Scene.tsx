@@ -37,7 +37,6 @@ interface Els {
   intro: HTMLElement | null
   exp: HTMLElement | null
   aboutRun: HTMLElement | null
-  numbers: HTMLElement | null
   work: HTMLElement | null
   contact: HTMLElement | null
   about: HTMLElement | null
@@ -73,7 +72,6 @@ function Rig() {
         intro: document.getElementById('intro'),
         exp: document.getElementById('experience'),
         aboutRun: document.querySelector('.about__run'),
-        numbers: document.getElementById('numbers'),
         work: document.getElementById('work'),
         contact: document.getElementById('contact'),
         about: document.getElementById('about'),
@@ -114,7 +112,6 @@ function Rig() {
     // Each pinned chapter scrubs its own sub-shape; damped so scroll jitter never reaches the dots.
     const d = (cur: number, to: number) => MathUtils.damp(cur, to, 6, step)
     frame.word = d(frame.word, beat(runProgress(els.aboutRun), ABOUT_WORDS.length))
-    frame.stat = d(frame.stat, beat(runProgress(els.numbers), 4))
     frame.logo = d(frame.logo, beat(runProgress(els.exp), EXPERIENCE.length))
     frame.step = d(frame.step, beat(runProgress(els.work), WORK_STEPS.length))
 
@@ -135,8 +132,8 @@ function Rig() {
 
     // Fixed camera with a little pointer sway once past the portrait (the portrait has its own depth tilt).
     const narrow = size.width / size.height < 0.85
-    // No sway while dots draw diagrams under DOM labels (stats → pipelines), so they stay registered.
-    const live = FILM_MODE || frame.intro < 1 || (frame.shape > 2.6 && frame.shape < 5.9) ? 0 : 1
+    // No sway while the dots draw a chapter's visual beside its copy (logos → pictograms), so they stay put.
+    const live = FILM_MODE || frame.intro < 1 || (frame.shape > 2.6 && frame.shape < 4.9) ? 0 : 1
     s.sway.x = MathUtils.damp(s.sway.x, pointer.x * live, 2, step)
     s.sway.y = MathUtils.damp(s.sway.y, pointer.y * live, 2, step)
     camera.position.set(CAMERA_POS.x + s.sway.x * 0.25, CAMERA_POS.y + s.sway.y * 0.18, CAMERA_POS.z)

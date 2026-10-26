@@ -1,5 +1,5 @@
 import { useEffect, useRef, type CSSProperties, type RefObject } from 'react'
-import { ABOUT_WORDS, EXPERIENCE, STATS, WORK, WORK_STEPS } from '../data/content'
+import { ABOUT_WORDS, EXPERIENCE, WORK, WORK_STEPS } from '../data/content'
 import { OBJECT_BY_ID, linkedGroups } from '../data/graph'
 import { beat, runProgress } from '../lib/runs'
 import { scrollToTarget } from '../lib/scroll'
@@ -82,37 +82,11 @@ export function About() {
   )
 }
 
-// ---------- 01b The numbers ----------
-
-const STAT_KICKERS = ['Reporting efficiency', 'Manual effort removed', 'Palantir certified', 'On Foundry']
-
-export function Numbers() {
-  const run = useRef<HTMLElement>(null)
-  usePinnedRun(run, STATS.length)
-  return (
-    <section ref={run} id="numbers" className="run numbers" data-theme="light" data-shape="3" data-film-run="9">
-      <div className="run__sticky">
-        <div className="run__copy">
-          {STATS.map((s, k) => (
-            <div key={s.label} className="beat" data-beat={k}>
-              <span className="beat__kicker">
-                ({String(k + 1).padStart(2, '0')}) {STAT_KICKERS[k]}
-              </span>
-              <span className="numbers__value" data-count={s.value}>
-                {s.value}
-              </span>
-              <p className="numbers__label">{s.label}</p>
-            </div>
-          ))}
-        </div>
-        <RunTicks count={STATS.length} />
-      </div>
-    </section>
-  )
-}
-
-/** A thin progress line with one tick per beat, filled by the run's --p. */
-function RunTicks({ count, labels, onPick }: { count: number; labels?: string[]; onPick?: (k: number) => void }) {
+/**
+ * A thin progress line filled by the run's --p, with one tick per beat — or, with `at`, ticks at those
+ * fractions of the run (e.g. where each project starts).
+ */
+function RunTicks({ count, labels, at, onPick }: { count: number; labels?: string[]; at?: number[]; onPick?: (k: number) => void }) {
   return (
     <div className="ticks" style={{ '--n': count } as CSSProperties}>
       <span className="ticks__fill" />
@@ -120,7 +94,7 @@ function RunTicks({ count, labels, onPick }: { count: number; labels?: string[];
         <button
           key={k}
           className="ticks__tick"
-          style={{ '--k': k } as CSSProperties}
+          style={{ '--k': k, ...(at && { left: `${at[k] * 100}%` }) } as CSSProperties}
           onClick={() => onPick?.(k)}
           tabIndex={onPick ? 0 : -1}
           aria-label={labels?.[k] ?? `Step ${k + 1}`}
@@ -143,7 +117,7 @@ export function ExperienceSection() {
   }
 
   return (
-    <section ref={run} id="experience" className="run run--marked xp" data-theme="dark" data-shape="4" data-film-run="16">
+    <section ref={run} id="experience" className="run run--marked xp" data-theme="dark" data-shape="3" data-film-run="16">
       <div className="run__sticky">
         <ChapterMark index="02" title="Experience" />
         <div className="run__copy">
@@ -211,7 +185,7 @@ export function Work() {
     run.current?.querySelectorAll<HTMLElement>('[data-proj]').forEach((layer) => {
       const p = Number(layer.dataset.proj)
       const start = PROJECT_START[p]
-      const end = start + WORK[p].icons.length - 1
+      const end = start + WORK[p].steps.length - 1
       const o = Math.max(0, Math.min(1, 1 - Math.max(0, start - b, b - end) * 2.4))
       layer.style.opacity = o.toFixed(3)
       layer.style.transform = `translate3d(0, ${((b < start ? start - b : b > end ? end - b : 0) * 40).toFixed(1)}px, 0)`
@@ -219,6 +193,10 @@ export function Work() {
     })
   }).current
   usePinnedRun(run, WORK_STEPS.length, 0.55, onBeat)
+  const pick = (p: number) => {
+    const el = run.current!
+    scrollToTarget(el.offsetTop + (PROJECT_START[p] / (WORK_STEPS.length - 1)) * (el.offsetHeight - innerHeight), { duration: 1.6 })
+  }
 
   return (
     <section
@@ -226,8 +204,8 @@ export function Work() {
       id="work"
       className="run run--marked work"
       data-theme="light"
-      data-shape="5"
-      data-film-run="20"
+      data-shape="4"
+      data-film-run="30"
       style={{ '--n': WORK_STEPS.length } as CSSProperties}
     >
       <div className="run__sticky">
@@ -235,7 +213,6 @@ export function Work() {
         <div className="run__copy">
           {WORK.map((cs, p) => {
             const o = OBJECT_BY_ID.get(cs.id)!
-            const also = cs.flows.slice(1).map((f) => f.label)
             return (
               <article key={cs.id} className="beat wbeat" data-proj={p}>
                 <span className="beat__kicker">
@@ -244,10 +221,10 @@ export function Work() {
                 <h3 className="wbeat__title">{o.title}</h3>
                 <p className="wbeat__summary">{cs.summary}</p>
                 <div className="wbeat__outcome">
-                  <span className="wbeat__value">{cs.outcome.value}</span>
-                  <span className="wbeat__label">{cs.outcome.label}</span>
+                  <span className="wbeat__value">{cs.highlight.value}</span>
+                  <span className="wbeat__label">{cs.highlight.label}</span>
                 </div>
-                {also.length > 0 && <p className="wbeat__also">Also: {also.join(' · ')}</p>}
+                {cs.also && <p className="wbeat__also">Also: {cs.also.join(' · ')}</p>}
               </article>
             )
           })}
@@ -264,7 +241,12 @@ export function Work() {
             </div>
           ))}
         </div>
-        <RunTicks count={WORK_STEPS.length} />
+        <RunTicks
+          count={WORK.length}
+          labels={WORK.map((cs) => cs.index)}
+          at={PROJECT_START.map((k) => k / (WORK_STEPS.length - 1))}
+          onPick={pick}
+        />
       </div>
     </section>
   )

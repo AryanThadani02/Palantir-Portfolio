@@ -7,7 +7,7 @@ import {
 } from 'three'
 import type { PerspectiveCamera, Points } from 'three'
 import { frame } from '../data/graph'
-import { ABOUT_WORDS, EXPERIENCE, WORK, WORK_STEPS } from '../data/content'
+import { ABOUT_WORDS, EXPERIENCE, STEPS_PER_PROJECT, WORK_STEPS } from '../data/content'
 import { ICONS } from '../ui/icons'
 import { PORTRAIT_TEXTURES, TABLE_CENTER, portrait } from './portrait'
 import { stepRegion, visualRegion, wordLayout } from './layouts'
@@ -253,7 +253,7 @@ const vertexShader = /* glsl */ `
   uniform vec2 uPortraitSize, uPortraitOffset, uEndSize, uEndOffset, uHalf;
   uniform vec3 uCenter, uRegion, uStepRegion, uWordLayout;
   uniform float uTableScale, uTime, uShape, uLight, uScale, uDpr, uNarrow, uReform, uCount;
-  uniform float uWord, uStat, uLogo, uStep, uStepCount, uProjectBreak, uRowsPer;
+  uniform float uWord, uLogo, uStep, uStepCount, uStepsPer, uRowsPer;
   uniform sampler2D tLogoPos, tLogoCol;
   attribute vec2 aPortrait;
   attribute vec3 aPColor;
@@ -329,42 +329,6 @@ const vertexShader = /* glsl */ `
     return mix(c, acc * 1.15, near(s, 3.0) * smoothstep(0.22, 0.0, abs(wordLocal().x - sweep)));
   }
 
-  // ---- 3: stat visuals (local units, -1..1)
-  vec2 statShape(int k) {
-    if (k == 0) {
-      // Bars, rising left to right.
-      float b = floor(aRand.y * 8.0);
-      float h = 0.34 + b * 0.085 + 0.05 * sin(b * 1.7);
-      return vec2(-0.82 + b * 0.234 + (aRand.z - 0.5) * 0.16, -0.85 + aRand.w * h * 1.9);
-    }
-    if (k == 1) {
-      // An 80% ring, drawn clockwise from the top; a few dots mark the missing 20%.
-      bool arc = aRand.w < 0.9;
-      float a = PI * 0.5 - (arc ? aRand.y * 0.8 : 0.8 + aRand.y * 0.2) * 2.0 * PI;
-      float r = (arc ? 0.78 : 0.78) + (aRand.z - 0.5) * (arc ? 0.12 : 0.02);
-      return vec2(cos(a), sin(a)) * r;
-    }
-    if (k == 2) {
-      // Four certification badges.
-      float c = floor(aRand.y * 4.0);
-      vec2 o = vec2(-0.72 + c * 0.48, 0.0);
-      float a = aRand.z * 2.0 * PI;
-      float rr = aRand.w < 0.55 ? 0.2 : sqrt(aRand.w) * 0.15;
-      return o + vec2(cos(a), sin(a)) * rr;
-    }
-    // Two years: two clusters joined by a line.
-    if (aRand.w < 0.22) return vec2(mix(-0.55, 0.55, aRand.y), (aRand.z - 0.5) * 0.02);
-    vec2 o = vec2(aRand.w < 0.61 ? -0.55 : 0.55, 0.0);
-    float a = aRand.y * 2.0 * PI;
-    return o + vec2(cos(a), sin(a)) * sqrt(aRand.z) * 0.3;
-  }
-  vec3 statPos() {
-    float s = clamp(uStat, 0.0, 3.0);
-    int i = int(min(floor(s), 2.0));
-    float k = easeInOut(clamp((s - float(i)) * 1.15 - aRand.y * 0.15, 0.0, 1.0));
-    return region(mix(statShape(i), statShape(i + 1), k));
-  }
-
   // ---- 4: company logos from the sampled texture
   vec4 logoTexel(sampler2D t, float logo) { return glyphTexel(t, logo); }
   vec3 logoPos() {
@@ -390,7 +354,7 @@ const vertexShader = /* glsl */ `
     vec2 m = morphOf(s, last);
     vec2 q = mix(glyphTexel(tLogoPos, STEP_BASE + m.x).xy, glyphTexel(tLogoPos, STEP_BASE + m.x + 1.0).xy, m.y) * 0.82;
     // Each change bursts outward toward the camera; the change of project is a full explosion.
-    float burst = sin(m.y * PI) * (m.x == uProjectBreak - 1.0 ? 1.0 : 0.35);
+    float burst = sin(m.y * PI) * (mod(m.x + 1.0, uStepsPer) < 0.5 ? 1.0 : 0.35);
     vec2 dir = normalize(vec2(aRand.z, aRand.w) - 0.5 + 1e-4);
     q += dir * (0.25 + aRand.y * 0.6) * burst;
     q *= 1.0 + sin(uTime * 0.7 + aRand.y) * 0.006;
@@ -401,10 +365,9 @@ const vertexShader = /* glsl */ `
     if (s == 0) return (uPortraitM * vec4((aPortrait - 0.5) * uPortraitSize + uPortraitOffset, 0.0, 1.0)).xyz;
     if (s == 1) return uCenter + (position - uCenter) * vec3(uTableScale, uTableScale, 1.0);
     if (s == 2) return wordPos();
-    if (s == 3) return statPos();
-    if (s == 4) return logoPos();
-    if (s == 5) return stepPos();
-    if (s == 6) return cloudPos();
+    if (s == 3) return logoPos();
+    if (s == 4) return stepPos();
+    if (s == 5) return cloudPos();
     return (uPortraitM * vec4((aPortrait - 0.5) * uEndSize + uEndOffset, 0.0, 1.0)).xyz;
   }
 
@@ -417,10 +380,9 @@ const vertexShader = /* glsl */ `
     }
     if (s == 1) return vec3(0.82, 0.88, 1.0);
     if (s == 2) return wordColor(ink, acc);
-    if (s == 3) return aMeta.x > 0.85 ? ink : acc;
-    if (s == 4) return logoColor();
-    if (s == 5) return aMeta.x > 0.82 ? ink : acc;
-    if (s == 7) return aPColor * 1.1;
+    if (s == 3) return logoColor();
+    if (s == 4) return aMeta.x > 0.82 ? ink : acc;
+    if (s == 6) return aPColor * 1.1;
     return aMeta.x > 0.8 ? acc : ink;
   }
 
@@ -428,10 +390,9 @@ const vertexShader = /* glsl */ `
     if (s == 0) return 0.9;
     if (s == 1) return 0.85;
     if (s == 2) return 0.9;
-    if (s == 3) return 0.75;
-    if (s == 4) return 0.95;
-    if (s == 5) return 0.9;
-    if (s == 6) return 0.0;
+    if (s == 3) return 0.95;
+    if (s == 4) return 0.9;
+    if (s == 5) return 0.0;
     return 0.95;
   }
 
@@ -439,14 +400,14 @@ const vertexShader = /* glsl */ `
     if (s == 0) return 0.05;
     if (s == 1) return aMeta.w;
     if (s == 2) return mix(0.046, 0.032, uNarrow);
-    if (s == 4) return 0.05;
-    if (s == 7) return 0.09;
+    if (s == 3) return 0.05;
+    if (s == 6) return 0.09;
     return 0.042;
   }
 
   void main() {
-    float v = clamp(uShape, 0.0, 7.0);
-    int i = int(min(floor(v), 6.0));
+    float v = clamp(uShape, 0.0, 6.0);
+    int i = int(min(floor(v), 5.0));
     float f = v - float(i);
     float k;
     if (i == 0) k = easeInOut(clamp((f - aMeta.z) / 0.38, 0.0, 1.0));
@@ -518,11 +479,10 @@ export function Particles() {
         uCount: { value: built.n },
         uRowsPer: { value: built.rowsPer },
         uWord: { value: 0 },
-        uStat: { value: 0 },
         uLogo: { value: 0 },
         uStep: { value: 0 },
         uStepCount: { value: WORK_STEPS.length },
-        uProjectBreak: { value: WORK[0].icons.length },
+        uStepsPer: { value: STEPS_PER_PROJECT },
         uStepRegion: { value: { x: 0, y: 0, z: 1 } },
         uWordLayout: { value: { x: 0, y: 0, z: 1 } },
         tLogoPos: { value: built.logoPos },
@@ -564,7 +524,6 @@ export function Particles() {
     u.uNarrow.value = narrow ? 1 : 0
     u.uReform.value = frame.reform
     u.uWord.value = frame.word
-    u.uStat.value = frame.stat
     u.uLogo.value = frame.logo
     u.uStep.value = frame.step
     u.uPortraitM.value.copy(portrait.matrix)

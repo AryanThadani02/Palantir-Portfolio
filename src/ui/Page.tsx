@@ -6,7 +6,7 @@ import { scrollToTarget } from '../lib/scroll'
 import { runProgress } from '../lib/runs'
 import { pointer } from '../lib/pointer'
 import { useMagnetic } from '../lib/useMagnetic'
-import { About, ExperienceSection, Numbers, Work } from './Chapters'
+import { About, ExperienceSection, Work } from './Chapters'
 import { SectionHead } from './common'
 import { CertAssembly } from './CertAssembly'
 import { IconMark } from './Logo'
@@ -57,7 +57,6 @@ export function Page() {
           </div>
         </section>
         <About />
-        <Numbers />
         <ExperienceSection />
         <Work />
         <Certifications />
@@ -239,7 +238,7 @@ function Certifications() {
       id="certifications"
       className="run certs-run"
       data-theme="dark"
-      data-shape="6"
+      data-shape="5"
       data-film-run="10"
       style={{ '--n': n } as CSSProperties}
     >
@@ -340,8 +339,8 @@ function HoloCard({ cert, index, centred }: { cert: (typeof CERTIFICATIONS)[numb
 
 function Contact() {
   const links = [
-    { label: 'LinkedIn', href: PROFILE.linkedin },
     { label: 'GitHub', href: PROFILE.github },
+    { label: 'LinkedIn', href: PROFILE.linkedin },
     { label: 'Résumé', href: PROFILE.resume },
   ].filter((l) => l.href)
   const email = useMagnetic<HTMLAnchorElement>(0.12)

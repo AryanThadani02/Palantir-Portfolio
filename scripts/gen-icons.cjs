@@ -7,7 +7,7 @@ const si = require('simple-icons')
 const BRANDS = {
   python: 'siPython', apachespark: 'siApachespark', typescript: 'siTypescript', react: 'siReact',
   nodedotjs: 'siNodedotjs', tailwindcss: 'siTailwindcss', mongodb: 'siMongodb', redis: 'siRedis',
-  firebase: 'siFirebase', jest: 'siJest', git: 'siGit', palantir: 'siPalantir',
+  firebase: 'siFirebase', jest: 'siJest', git: 'siGit', palantir: 'siPalantir', redux: 'siRedux',
 }
 // Foundry / AIP tools (and brands Simple Icons doesn't carry) use Blueprint, Palantir's own icon set.
 const BLUEPRINT = {
@@ -17,7 +17,9 @@ const BLUEPRINT = {
   learning: 'learning', salesforce: 'cloud',
   // Work pictograms (one per pipeline step).
   envelope: 'envelope', clean: 'clean', home: 'home', 'tick-circle': 'tick-circle', 'send-message': 'send-message',
-  import: 'import', 'th-derived': 'th-derived', cube: 'cube',
+  import: 'import', 'th-derived': 'th-derived', cube: 'cube', inbox: 'inbox', 'diagram-tree': 'diagram-tree',
+  database: 'database', control: 'control', edit: 'edit', upload: 'upload', desktop: 'desktop',
+  'shopping-cart': 'shopping-cart', office: 'office', cog: 'cog', box: 'box', truck: 'truck',
 }
 
 const icons = {}
