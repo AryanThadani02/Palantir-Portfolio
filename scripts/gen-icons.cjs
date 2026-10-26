@@ -15,6 +15,9 @@ const BLUEPRINT = {
   'code-block': 'code-block', exchange: 'exchange', 'timeline-bar-chart': 'timeline-bar-chart', map: 'map',
   'predictive-analysis': 'predictive-analysis', chat: 'chat', code: 'code', chart: 'chart', document: 'document',
   learning: 'learning', salesforce: 'cloud',
+  // Work pictograms (one per pipeline step).
+  envelope: 'envelope', clean: 'clean', home: 'home', 'tick-circle': 'tick-circle', 'send-message': 'send-message',
+  import: 'import', 'th-derived': 'th-derived', cube: 'cube',
 }
 
 const icons = {}

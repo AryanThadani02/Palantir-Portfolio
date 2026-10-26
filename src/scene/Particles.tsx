@@ -3,13 +3,14 @@ import { useFrame } from '@react-three/fiber'
 import { useTexture } from '@react-three/drei'
 import {
   BufferAttribute, BufferGeometry, DataTexture, FloatType, Matrix4, NearestFilter, RGBAFormat, ShaderMaterial,
-  UnsignedByteType, Vector2, Vector4,
+  UnsignedByteType, Vector2,
 } from 'three'
 import type { PerspectiveCamera, Points } from 'three'
 import { frame } from '../data/graph'
-import { EXPERIENCE, WORK } from '../data/content'
+import { ABOUT_WORDS, EXPERIENCE, WORK, WORK_STEPS } from '../data/content'
+import { ICONS } from '../ui/icons'
 import { PORTRAIT_TEXTURES, TABLE_CENTER, portrait } from './portrait'
-import { MAX_NODES, nodeHalf, pipelineLayout, visualRegion } from './layouts'
+import { stepRegion, visualRegion, wordLayout } from './layouts'
 
 // The raw table: fields of varying width, rows of "text" whose length varies per cell.
 const FIELD_WIDTHS = [20, 32, 18, 28, 15, 25]
@@ -21,6 +22,14 @@ const TABLE_H = 7
 /** Company logos, oldest first — the order the Experience chapter morphs through. */
 const LOGOS = EXPERIENCE.map((e) => e.logo)
 const LOGO_TEX_W = 128
+/**
+ * Every "glyph" the particles can spell sits in one target texture, a block of rows per glyph:
+ * the company logos, then the About words, then the Work step pictograms.
+ */
+const WORD_BASE = LOGOS.length
+const STEP_BASE = WORD_BASE + ABOUT_WORDS.length
+const BLOCKS = STEP_BASE + WORK_STEPS.length
+const WORD_FONT = '500 260px Geist, system-ui, sans-serif'
 
 /** Deterministic PRNG so the layout is identical on every load. */
 function mulberry32(seed: number) {
@@ -86,8 +95,7 @@ function samplePortrait(image: Img, depthImage: Img, count: number, rand: () => 
  * Points over a logo's mark (anything that differs from the background, read off the corners), in -1..1 keeping
  * the aspect, with colours lifted so they read on the dark Experience chapter.
  */
-function sampleLogo(image: Img, count: number, rand: () => number) {
-  const w = 200
+function sampleLogo(image: Img, count: number, rand: () => number, w = 200) {
   const h = Math.max(1, Math.round(w / (image.width / image.height)))
   const d = pixels(image, w, h)
   const corner = (x: number, y: number) => [d[(y * w + x) * 4], d[(y * w + x) * 4 + 1], d[(y * w + x) * 4 + 2]]
@@ -109,6 +117,52 @@ function sampleLogo(image: Img, count: number, rand: () => number) {
     b += (1 - b) * lift
     return { x: (x - w / 2) / k, y: -(y - h / 2) / k, r, g, b }
   })
+}
+
+/** A Blueprint pictogram, filled dark on white with a margin (so the corners read as background). */
+function iconCanvas(key: string) {
+  const c = document.createElement('canvas')
+  c.width = c.height = 240
+  const g = c.getContext('2d')!
+  g.fillStyle = '#fff'
+  g.fillRect(0, 0, 240, 240)
+  g.setTransform(10, 0, 0, 10, 20, 20)
+  g.fillStyle = '#000'
+  for (const d of ICONS[key].paths) g.fill(new Path2D(d), 'evenodd')
+  return c
+}
+
+/** The About words, all on one canvas size so every word shares one type size. */
+function wordCanvases() {
+  const probe = document.createElement('canvas').getContext('2d')!
+  probe.font = WORD_FONT
+  probe.letterSpacing = '-10px'
+  const w = Math.ceil(Math.max(...ABOUT_WORDS.map((a) => probe.measureText(a.word).width)) * 1.06)
+  return ABOUT_WORDS.map(({ word }) => {
+    const c = document.createElement('canvas')
+    c.width = w
+    c.height = 340
+    const g = c.getContext('2d')!
+    g.fillStyle = '#fff'
+    g.fillRect(0, 0, c.width, c.height)
+    g.font = WORD_FONT
+    g.letterSpacing = '-10px'
+    g.textAlign = 'center'
+    g.textBaseline = 'middle'
+    g.fillStyle = '#000'
+    g.fillText(word, c.width / 2, c.height / 2 + 10)
+    return c
+  })
+}
+
+/** (Re)writes the word blocks of the glyph texture — called again once Geist has loaded. */
+function writeWords(tex: DataTexture, n: number, rowsPer: number) {
+  const rand = mulberry32(11)
+  const data = tex.image.data as Float32Array
+  wordCanvases().forEach((c, wi) => {
+    sampleLogo(c, n, rand, 900).forEach((p, i) => data.set([p.x, p.y, 0, 1], ((WORD_BASE + wi) * rowsPer * LOGO_TEX_W + i) * 4))
+  })
+  tex.needsUpdate = true
 }
 
 function buildGeometry(face: Img, depth: Img, logos: Img[]) {
@@ -144,10 +198,11 @@ function buildGeometry(face: Img, depth: Img, logos: Img[]) {
 
   // Logo targets in a texture: row block per logo, one texel per particle (xy position, rgb colour).
   const rowsPer = Math.ceil(n / LOGO_TEX_W)
-  const logoPos = new Float32Array(LOGO_TEX_W * rowsPer * LOGOS.length * 4)
-  const logoCol = new Uint8Array(LOGO_TEX_W * rowsPer * LOGOS.length * 4)
-  logos.forEach((img, li) => {
-    const pts = sampleLogo(img, n, rand)
+  const logoPos = new Float32Array(LOGO_TEX_W * rowsPer * BLOCKS * 4)
+  const logoCol = new Uint8Array(LOGO_TEX_W * rowsPer * BLOCKS * 4)
+  const glyphs: Img[] = [...logos, ...wordCanvases(), ...WORK_STEPS.map((st) => iconCanvas(st.icon))]
+  glyphs.forEach((img, li) => {
+    const pts = sampleLogo(img, n, rand, li >= WORD_BASE && li < STEP_BASE ? 900 : 200)
     pts.forEach((p, i) => {
       const t = (li * rowsPer * LOGO_TEX_W + i) * 4
       logoPos.set([p.x, p.y, 0, 1], t)
@@ -155,7 +210,7 @@ function buildGeometry(face: Img, depth: Img, logos: Img[]) {
     })
   })
   const mkTex = (data: Float32Array | Uint8Array, type: typeof FloatType | typeof UnsignedByteType) => {
-    const tex = new DataTexture(data, LOGO_TEX_W, rowsPer * LOGOS.length, RGBAFormat, type)
+    const tex = new DataTexture(data, LOGO_TEX_W, rowsPer * BLOCKS, RGBAFormat, type)
     tex.minFilter = tex.magFilter = NearestFilter
     tex.needsUpdate = true
     return tex
@@ -163,7 +218,7 @@ function buildGeometry(face: Img, depth: Img, logos: Img[]) {
 
   const attr = (size: number) => new Float32Array(n * size)
   const table = attr(3), portraitUv = attr(2), portraitColor = attr(3), meta = attr(4)
-  const scatter = attr(3), rnd = attr(4), sphere = attr(4)
+  const rnd = attr(4), sphere = attr(4)
 
   cells.forEach((cell, i) => {
     table.set([TABLE_CENTER.x + cell.x, TABLE_CENTER.y + cell.y, TABLE_CENTER.z], i * 3)
@@ -172,8 +227,6 @@ function buildGeometry(face: Img, depth: Img, logos: Img[]) {
     portraitColor.set([p.r, p.g, p.b], i * 3)
     // t0 · table → next stagger (left-to-right sweep) · dissolve delay (matches the image front) · table dot size
     meta.set([rand(), cell.xn * 0.36 + rand() * 0.1, ((1 - p.v) * 0.75 + rand() * 0.25) * 0.6, cell.size], i * 4)
-    // Field noise: anywhere on screen.
-    scatter.set([rand() * 2.2 - 1.1, rand() * 2.1 - 1.05, (rand() - 0.5) * 0.3], i * 3)
     // id + three independent randoms for the procedural shapes.
     rnd.set([i, rand(), rand(), rand()], i * 4)
     // Resting cloud (certificates + stack, invisible).
@@ -187,26 +240,23 @@ function buildGeometry(face: Img, depth: Img, logos: Img[]) {
   geometry.setAttribute('aPortrait', new BufferAttribute(portraitUv, 2))
   geometry.setAttribute('aPColor', new BufferAttribute(portraitColor, 3))
   geometry.setAttribute('aMeta', new BufferAttribute(meta, 4))
-  geometry.setAttribute('aScatter', new BufferAttribute(scatter, 3))
   geometry.setAttribute('aRand', new BufferAttribute(rnd, 4))
   geometry.setAttribute('aSphere', new BufferAttribute(sphere, 4))
   return { geometry, n, rowsPer, logoPos: mkTex(logoPos, FloatType), logoCol: mkTex(logoCol, UnsignedByteType) }
 }
 
 const vertexShader = /* glsl */ `
-  #define MAX_NODES ${MAX_NODES}
+  #define WORD_BASE ${WORD_BASE.toFixed(1)}
+  #define STEP_BASE ${STEP_BASE.toFixed(1)}
+  #define BLOCKS ${BLOCKS.toFixed(1)}
   uniform mat4 uPortraitM;
   uniform vec2 uPortraitSize, uPortraitOffset, uEndSize, uEndOffset, uHalf;
-  uniform vec3 uCenter, uRegion;
+  uniform vec3 uCenter, uRegion, uStepRegion, uWordLayout;
   uniform float uTableScale, uTime, uShape, uLight, uScale, uDpr, uNarrow, uReform, uCount;
-  uniform float uField, uStat, uLogo, uPipe, uLit0, uLit1, uRowsPer;
+  uniform float uWord, uStat, uLogo, uStep, uStepCount, uProjectBreak, uRowsPer;
   uniform sampler2D tLogoPos, tLogoCol;
-  uniform vec4 uNodes0[MAX_NODES];
-  uniform vec4 uNodes1[MAX_NODES];
-  uniform float uNodeCount0, uNodeCount1;
-  uniform vec2 uNodeHalf;
   attribute vec2 aPortrait;
-  attribute vec3 aPColor, aScatter;
+  attribute vec3 aPColor;
   attribute vec4 aSphere;   // resting-cloud position
   attribute vec4 aMeta;     // t0, table stagger, dissolve delay, table size
   attribute vec4 aRand;     // id, r1, r2, r3
@@ -225,7 +275,21 @@ const vertexShader = /* glsl */ `
   // Normalised view coordinates (x, y in -1..1 of the viewport) → world, on the shared plane.
   vec3 norm(vec3 n) { return uCenter + vec3(n.x * uHalf.x, n.y * uHalf.y, n.z * uHalf.y); }
   // A point in the chapter's visual region; local units keep a square aspect.
-  vec3 region(vec2 l) { return norm(vec3(uRegion.x + l.x * uRegion.z * uHalf.y / uHalf.x, uRegion.y + l.y * uRegion.z, 0.0)); }
+  vec3 regionOf(vec3 r, vec2 l) { return norm(vec3(r.x + l.x * r.z * uHalf.y / uHalf.x, r.y + l.y * r.z, 0.0)); }
+  vec3 region(vec2 l) { return regionOf(uRegion, l); }
+
+  // A glyph's sampled target (see the texture blocks in buildGeometry).
+  vec4 glyphTexel(sampler2D t, float block) {
+    float idx = aRand.x + block * uRowsPer * 128.0;
+    vec2 uv = (vec2(mod(idx, 128.0), floor(idx / 128.0)) + 0.5) / vec2(128.0, uRowsPer * BLOCKS);
+    return texture2D(t, uv);
+  }
+  // Continuous index s over 0..last -> (from-glyph, eased progress to the next), staggered per dot.
+  vec2 morphOf(float s, float last) {
+    float i = min(floor(s), last - 1.0);
+    return vec2(i, easeInOut(clamp((s - i) * 1.2 - aRand.y * 0.2, 0.0, 1.0)));
+  }
+  float near(float s, float k) { return max(0.0, 1.0 - abs(s - k) * 1.6); }
 
   vec3 cloudPos() {
     float a = uTime * 0.08;
@@ -234,16 +298,35 @@ const vertexShader = /* glsl */ `
     return uCenter + v * uHalf.y * 0.6;
   }
 
-  // ---- 2: the manifesto field, noise → grid
-  vec3 fieldPos() {
-    float cols = floor(sqrt(uCount * uHalf.x / uHalf.y));
-    float rows = ceil(uCount / cols);
-    float gx = mod(aRand.x, cols) / (cols - 1.0) * 2.0 - 1.0;
-    float gy = floor(aRand.x / cols) / (rows - 1.0) * 2.0 - 1.0;
-    vec3 grid = vec3(gx * 1.02, gy * 1.02 + sin(gx * 4.0 + uTime * 0.6) * 0.008, 0.0);
-    float k = easeInOut(clamp(uField * 1.25 - aRand.y * 0.25, 0.0, 1.0));
-    vec3 drift = vec3(sin(uTime * 0.3 + aRand.z * 6.28), cos(uTime * 0.27 + aRand.w * 6.28), 0.0) * 0.02 * (1.0 - k);
-    return norm(mix(aScatter, grid, k) + drift);
+  // ---- 2: About title sequence — the dots write one giant word per beat
+  vec2 wordLocal() {
+    float s = clamp(uWord, 0.0, 3.0);
+    vec2 m = morphOf(s, 3.0);
+    vec2 q = mix(glyphTexel(tLogoPos, WORD_BASE + m.x).xy, glyphTexel(tLogoPos, WORD_BASE + m.x + 1.0).xy, m.y);
+    // Between words the letters burst apart a little and re-form.
+    q += (vec2(aRand.z, aRand.w) - 0.5) * vec2(0.9, 0.5) * sin(m.y * PI);
+    return q;
+  }
+  vec3 wordPos() {
+    float s = clamp(uWord, 0.0, 3.0);
+    vec2 q = wordLocal();
+    // Raw data: every dot jitters, and a few strays wander off the letters.
+    float raw = near(s, 0.0);
+    q += vec2(sin(uTime * 1.9 + aRand.y * 40.0), cos(uTime * 1.5 + aRand.z * 40.0)) * 0.016 * raw;
+    if (aRand.w > 0.88) q += (vec2(aRand.y, aRand.z) - 0.5) * vec2(1.7, 1.2) * raw
+      + vec2(sin(uTime * 0.3 + aRand.x), cos(uTime * 0.25 + aRand.y * 9.0)) * 0.05 * raw;
+    // Pipelines: a share of the dots stream left to right through the letters, along their own row.
+    if (aRand.w < 0.26) q.x = mix(q.x, fract(aRand.y + uTime * (0.08 + aRand.z * 0.06)) * 2.3 - 1.15, near(s, 2.0));
+    vec2 o = uWordLayout.xy + q * uWordLayout.z * vec2(1.0, uHalf.x / uHalf.y);
+    return norm(vec3(o, 0.0));
+  }
+  vec3 wordColor(vec3 ink, vec3 acc) {
+    float s = clamp(uWord, 0.0, 3.0);
+    vec3 c = mix(ink, acc, near(s, 1.0));
+    c = mix(c, acc, near(s, 2.0) * step(aRand.w, 0.26));
+    // Apps: a soft light sweeps across the letters.
+    float sweep = fract(uTime * 0.16) * 3.0 - 1.5;
+    return mix(c, acc * 1.15, near(s, 3.0) * smoothstep(0.22, 0.0, abs(wordLocal().x - sweep)));
   }
 
   // ---- 3: stat visuals (local units, -1..1)
@@ -283,11 +366,7 @@ const vertexShader = /* glsl */ `
   }
 
   // ---- 4: company logos from the sampled texture
-  vec4 logoTexel(sampler2D t, float logo) {
-    float idx = aRand.x + logo * uRowsPer * 128.0;
-    vec2 uv = (vec2(mod(idx, 128.0), floor(idx / 128.0)) + 0.5) / vec2(128.0, uRowsPer * 5.0);
-    return texture2D(t, uv);
-  }
+  vec4 logoTexel(sampler2D t, float logo) { return glyphTexel(t, logo); }
   vec3 logoPos() {
     float s = clamp(uLogo, 0.0, 4.0);
     float i = min(floor(s), 3.0);
@@ -304,50 +383,27 @@ const vertexShader = /* glsl */ `
     return mix(logoTexel(tLogoCol, i).rgb, logoTexel(tLogoCol, i + 1.0).rgb, k);
   }
 
-  // ---- 5: pipelines — dots on the step boxes, the rest streaming along the edges
-  vec4 nodeAt(int p, int j) { return p == 0 ? uNodes0[j] : uNodes1[j]; }
-  float nodeCount(int p) { return p == 0 ? uNodeCount0 : uNodeCount1; }
-  // xy position (normalised view), z: 1 on an edge else 0, w: how lit this dot is.
-  vec4 pipeShape(int p) {
-    float cnt = nodeCount(p);
-    int j = int(min(floor(aRand.z * cnt), cnt - 1.0));
-    vec4 a = nodeAt(p, j);
-    float lit = p == 0 ? uLit0 : uLit1;
-    bool hasNext = j + 1 < int(cnt) && nodeAt(p, j + 1).z == a.z;
-    if (aRand.w > 0.5 && hasNext) {
-      vec4 b = nodeAt(p, j + 1);
-      float t = fract(aRand.y + uTime * (0.07 + aRand.w * 0.05));
-      vec2 from = a.xy + vec2(uNodeHalf.x, 0.0) * (uNarrow > 0.5 ? 0.0 : 1.0) + vec2(0.0, -uNodeHalf.y) * uNarrow;
-      vec2 to = b.xy - vec2(uNodeHalf.x, 0.0) * (uNarrow > 0.5 ? 0.0 : 1.0) + vec2(0.0, uNodeHalf.y) * uNarrow;
-      vec2 q = mix(from, to, t) + vec2(0.0, (aRand.y - 0.5) * 0.004);
-      float on = smoothstep(a.w + 0.5, a.w + 1.0, lit);
-      return vec4(q, 1.0, on);
-    }
-    // On the box: its outline only, so the step label inside stays clean.
-    vec2 h = uNodeHalf;
-    vec2 q;
-    {
-      float u = aRand.y * 4.0;
-      if (u < 1.0) q = vec2(mix(-h.x, h.x, u), h.y);
-      else if (u < 2.0) q = vec2(h.x, mix(h.y, -h.y, u - 1.0));
-      else if (u < 3.0) q = vec2(mix(h.x, -h.x, u - 2.0), -h.y);
-      else q = vec2(-h.x, mix(-h.y, h.y, u - 3.0));
-    }
-    return vec4(a.xy + q, 0.0, smoothstep(a.w - 0.1, a.w + 0.4, lit));
-  }
-  vec3 pipePos() {
-    float s = clamp(uPipe, 0.0, 1.0);
-    float k = easeInOut(clamp(s * 1.2 - aRand.y * 0.2, 0.0, 1.0));
-    return norm(vec3(mix(pipeShape(0).xy, pipeShape(1).xy, k), 0.0));
+  // ---- 5: Work — one big pictogram per pipeline step, morphing step to step
+  vec3 stepPos() {
+    float last = uStepCount - 1.0;
+    float s = clamp(uStep, 0.0, last);
+    vec2 m = morphOf(s, last);
+    vec2 q = mix(glyphTexel(tLogoPos, STEP_BASE + m.x).xy, glyphTexel(tLogoPos, STEP_BASE + m.x + 1.0).xy, m.y) * 0.82;
+    // Each change bursts outward toward the camera; the change of project is a full explosion.
+    float burst = sin(m.y * PI) * (m.x == uProjectBreak - 1.0 ? 1.0 : 0.35);
+    vec2 dir = normalize(vec2(aRand.z, aRand.w) - 0.5 + 1e-4);
+    q += dir * (0.25 + aRand.y * 0.6) * burst;
+    q *= 1.0 + sin(uTime * 0.7 + aRand.y) * 0.006;
+    return regionOf(uStepRegion, q) + vec3(0.0, 0.0, burst * 0.35 * uHalf.y);
   }
 
   vec3 shapePos(int s) {
     if (s == 0) return (uPortraitM * vec4((aPortrait - 0.5) * uPortraitSize + uPortraitOffset, 0.0, 1.0)).xyz;
     if (s == 1) return uCenter + (position - uCenter) * vec3(uTableScale, uTableScale, 1.0);
-    if (s == 2) return fieldPos();
+    if (s == 2) return wordPos();
     if (s == 3) return statPos();
     if (s == 4) return logoPos();
-    if (s == 5) return pipePos();
+    if (s == 5) return stepPos();
     if (s == 6) return cloudPos();
     return (uPortraitM * vec4((aPortrait - 0.5) * uEndSize + uEndOffset, 0.0, 1.0)).xyz;
   }
@@ -360,15 +416,10 @@ const vertexShader = /* glsl */ `
       return mix(vec3(0.05, 0.07, 0.12), vec3(0.95, 0.96, 1.0), g);
     }
     if (s == 1) return vec3(0.82, 0.88, 1.0);
+    if (s == 2) return wordColor(ink, acc);
     if (s == 3) return aMeta.x > 0.85 ? ink : acc;
     if (s == 4) return logoColor();
-    if (s == 5) {
-      float s2 = clamp(uPipe, 0.0, 1.0);
-      vec4 a = pipeShape(0), b = pipeShape(1);
-      float on = mix(a.w, b.w, step(0.5, s2));
-      float edge = mix(a.z, b.z, step(0.5, s2));
-      return mix(ink * 0.85, acc * (edge > 0.5 ? 1.2 : 1.0), on);
-    }
+    if (s == 5) return aMeta.x > 0.82 ? ink : acc;
     if (s == 7) return aPColor * 1.1;
     return aMeta.x > 0.8 ? acc : ink;
   }
@@ -376,17 +427,10 @@ const vertexShader = /* glsl */ `
   float shapeAlpha(int s) {
     if (s == 0) return 0.9;
     if (s == 1) return 0.85;
-    if (s == 2) return mix(0.5, 0.22, smoothstep(0.0, 1.0, uField)) * mix(1.0, 0.7, uNarrow);
+    if (s == 2) return 0.9;
     if (s == 3) return 0.75;
     if (s == 4) return 0.95;
-    if (s == 5) {
-      float s2 = clamp(uPipe, 0.0, 1.0);
-      vec4 a = pipeShape(0), b = pipeShape(1);
-      float on = mix(a.w, b.w, step(0.5, s2));
-      // Dim through the project-to-project morph so the crossing dots read as a dissolve, not scribbles.
-      float dip = smoothstep(0.1, 0.42, s2) * (1.0 - smoothstep(0.58, 0.9, s2));
-      return (0.32 + on * 0.6) * (1.0 - 0.9 * dip);
-    }
+    if (s == 5) return 0.9;
     if (s == 6) return 0.0;
     return 0.95;
   }
@@ -394,7 +438,7 @@ const vertexShader = /* glsl */ `
   float shapeSize(int s) {
     if (s == 0) return 0.05;
     if (s == 1) return aMeta.w;
-    if (s == 2) return 0.032;
+    if (s == 2) return mix(0.046, 0.032, uNarrow);
     if (s == 4) return 0.05;
     if (s == 7) return 0.09;
     return 0.042;
@@ -438,8 +482,6 @@ const fragmentShader = /* glsl */ `
   }
 `
 
-const emptyNodes = () => Array.from({ length: MAX_NODES }, () => new Vector4())
-
 export function Particles() {
   const [face, depth, ...logoTex] = useTexture([...PORTRAIT_TEXTURES, ...LOGOS])
   const points = useRef<Points>(null)
@@ -475,21 +517,20 @@ export function Particles() {
         uReform: { value: 0 },
         uCount: { value: built.n },
         uRowsPer: { value: built.rowsPer },
-        uField: { value: 0 },
+        uWord: { value: 0 },
         uStat: { value: 0 },
         uLogo: { value: 0 },
-        uPipe: { value: 0 },
-        uLit0: { value: 0 },
-        uLit1: { value: 0 },
+        uStep: { value: 0 },
+        uStepCount: { value: WORK_STEPS.length },
+        uProjectBreak: { value: WORK[0].icons.length },
+        uStepRegion: { value: { x: 0, y: 0, z: 1 } },
+        uWordLayout: { value: { x: 0, y: 0, z: 1 } },
         tLogoPos: { value: built.logoPos },
         tLogoCol: { value: built.logoCol },
-        uNodes0: { value: emptyNodes() },
-        uNodes1: { value: emptyNodes() },
-        uNodeCount0: { value: 1 },
-        uNodeCount1: { value: 1 },
-        uNodeHalf: { value: new Vector2(0.08, 0.05) },
       },
     })
+    // The words were first drawn in a fallback face; redraw them in Geist once it's loaded.
+    document.fonts.load(WORD_FONT).then(() => writeWords(built.logoPos, built.n, built.rowsPer))
     return { geometry: built.geometry, material: mat }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [face, depth])
@@ -501,19 +542,15 @@ export function Particles() {
     const u = material.uniforms
     const narrow = state.size.width / state.size.height < 0.85
 
-    // Layouts depend only on the breakpoint: rebuild the pipeline nodes when it flips.
+    // Layouts depend only on the breakpoint.
     if (narrowRef.current !== narrow) {
       narrowRef.current = narrow
       const r = visualRegion(narrow)
       u.uRegion.value = { x: r.cx, y: r.cy, z: r.s }
-      const h = nodeHalf(narrow)
-      u.uNodeHalf.value.set(h.x, h.y)
-      WORK.slice(0, 2).forEach((cs, p) => {
-        const nodes = pipelineLayout(cs, narrow)
-        const arr = u[`uNodes${p}`].value as Vector4[]
-        nodes.forEach((nd, j) => arr[j].set(nd.x, nd.y, nd.lane, nd.step))
-        u[`uNodeCount${p}`].value = nodes.length
-      })
+      const st = stepRegion(narrow)
+      u.uStepRegion.value = { x: st.cx, y: st.cy, z: st.s }
+      const w = wordLayout(narrow)
+      u.uWordLayout.value = { x: w.cx, y: w.cy, z: w.s }
     }
 
     points.current!.visible = frame.shape > 0.001
@@ -526,12 +563,10 @@ export function Particles() {
     u.uLight.value = frame.light
     u.uNarrow.value = narrow ? 1 : 0
     u.uReform.value = frame.reform
-    u.uField.value = frame.field
+    u.uWord.value = frame.word
     u.uStat.value = frame.stat
     u.uLogo.value = frame.logo
-    u.uPipe.value = frame.pipe
-    u.uLit0.value = frame.lit0
-    u.uLit1.value = frame.lit1
+    u.uStep.value = frame.step
     u.uPortraitM.value.copy(portrait.matrix)
     u.uPortraitSize.value.copy(portrait.size)
     u.uPortraitOffset.value.copy(portrait.offset)

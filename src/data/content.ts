@@ -26,6 +26,8 @@ export interface CaseStudy {
   sector: string
   summary: string
   flows: { label: string; steps: string[] }[]
+  /** One pictogram (icons.ts key) per step of the main lane — the particles morph through these. */
+  icons: string[]
   outcome: { value: string; label: string }
 }
 
@@ -41,6 +43,7 @@ export const WORK: CaseStudy[] = [
       { label: 'CRM sync', steps: ['Salesforce', 'JWT Bearer · RS256', 'Ontology', 'Actions & writeback'] },
       { label: 'Documents', steps: ['Documents', 'AIP Document Intelligence', 'Structured objects', 'Workshop'] },
     ],
+    icons: ['envelope', 'clean', 'home', 'tick-circle', 'send-message'],
     outcome: { value: 'Fixed', label: 'Missing dashboard data — traced and repaired at the pipeline' },
   },
   {
@@ -50,8 +53,22 @@ export const WORK: CaseStudy[] = [
     summary:
       'A Foundry pipeline that takes PDFs from intake to reporting with no hands in between — ingestion, extraction and Ontology mapping.',
     flows: [{ label: 'Pipeline', steps: ['PDF intake', 'Ingestion', 'Extraction', 'Ontology mapping', 'Reporting'] }],
+    icons: ['document', 'import', 'th-derived', 'cube', 'timeline-bar-chart'],
     outcome: { value: '−80%', label: 'Manual effort, with more accurate reporting' },
   },
+]
+
+/** Every step the Work chapter plays, across projects, in order (main lane only). */
+export const WORK_STEPS = WORK.flatMap((cs, project) =>
+  cs.icons.map((icon, step) => ({ project, step, count: cs.icons.length, icon, label: cs.flows[0].steps[step] })),
+)
+
+/** The About title sequence: one word per beat, written by the particles, with its line of the manifesto. */
+export const ABOUT_WORDS = [
+  { word: 'Raw data', line: 'I turn messy operational data —' },
+  { word: 'Ontology', line: 'into ontologies people can act on.' },
+  { word: 'Pipelines', line: 'Pipelines in,' },
+  { word: 'Apps', line: 'governed Workshop, OSDK and AIP applications out.' },
 ]
 
 export interface StackItem {

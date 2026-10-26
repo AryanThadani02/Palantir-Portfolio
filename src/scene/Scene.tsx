@@ -3,11 +3,9 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { MathUtils } from 'three'
 import type { PerspectiveCamera } from 'three'
 import { frame, smoothstep } from '../data/graph'
-import { EXPERIENCE, WORK } from '../data/content'
+import { ABOUT_WORDS, EXPERIENCE, WORK_STEPS } from '../data/content'
 import { beat, runProgress } from '../lib/runs'
 
-/** Longest lane per project: how many steps each pipeline's wave lights. */
-const PIPE_STEPS = WORK.map((w) => Math.max(...w.flows.map((f) => f.steps.length)))
 import { releaseScroll } from '../lib/scroll'
 import { overlayRefs, setIntroDone } from '../lib/store'
 import { FILM_MODE, playFilm } from '../lib/film'
@@ -115,13 +113,10 @@ function Rig() {
 
     // Each pinned chapter scrubs its own sub-shape; damped so scroll jitter never reaches the dots.
     const d = (cur: number, to: number) => MathUtils.damp(cur, to, 6, step)
-    frame.field = d(frame.field, runProgress(els.aboutRun))
+    frame.word = d(frame.word, beat(runProgress(els.aboutRun), ABOUT_WORDS.length))
     frame.stat = d(frame.stat, beat(runProgress(els.numbers), 4))
     frame.logo = d(frame.logo, beat(runProgress(els.exp), EXPERIENCE.length))
-    const wp = runProgress(els.work)
-    frame.pipe = d(frame.pipe, beat(wp, 2, 0.7))
-    frame.lit0 = d(frame.lit0, clamp01(wp / 0.4) * (PIPE_STEPS[0] + 1))
-    frame.lit1 = d(frame.lit1, clamp01((wp - 0.58) / 0.38) * (PIPE_STEPS[1] + 1))
+    frame.step = d(frame.step, beat(runProgress(els.work), WORK_STEPS.length))
 
     // Theme: whichever section owns the middle of the viewport.
     let theme = 'dark'

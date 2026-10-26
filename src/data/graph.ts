@@ -45,21 +45,19 @@ export const frame = {
   intro: 0,
   /**
    * Which shape the particles hold, as a continuous value:
-   * 0 portrait · 1 raw table · 2 field (manifesto) · 3 stats · 4 company logos · 5 pipelines · 6 hidden · 7 colour portrait.
+   * 0 portrait · 1 raw table · 2 About words · 3 stats · 4 company logos · 5 Work pictograms · 6 hidden · 7 colour portrait.
    */
   shape: 0,
   /** 0 dark theme … 1 light theme (eased). */
   light: 0,
-  /** Field: 0 scattered noise → 1 aligned grid (manifesto progress). */
-  field: 0,
+  /** About: continuous word index 0..3 (raw data · ontology · pipelines · apps). */
+  word: 0,
   /** Stats: continuous sub-shape 0 bars · 1 ring · 2 badges · 3 pair. */
   stat: 0,
   /** Experience: continuous logo index 0..4 (oldest → newest). */
   logo: 0,
-  /** Work: continuous project index 0..1, plus how far each project's wave has lit its steps. */
-  pipe: 0,
-  lit0: 0,
-  lit1: 0,
+  /** Work: continuous step index across both projects' pipelines (WORK_STEPS). */
+  step: 0,
   /** 0..1 at Contact: the regathered particles resolve into the real photo. */
   reform: 0,
 }

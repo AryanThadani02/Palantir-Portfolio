@@ -1,19 +1,17 @@
 /* The middle chapters: each is a pinned scene whose copy crossfades beat by beat while the particles draw. */
 
-/* ---------- About (light) ---------- */
+/* ---------- About (light): the particles write the words; one manifesto line sits under each ---------- */
 
 .about__run {
   position: relative;
-  height: 250vh;
+  height: 400vh;
 }
 
 .about__sticky {
   position: sticky;
   top: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
   height: 100vh;
+  overflow: hidden;
   padding: 0 var(--gutter);
 }
 
@@ -25,71 +23,35 @@
   margin: 0;
 }
 
-.manifesto {
-  max-width: 1300px;
-  font-size: clamp(34px, 4.6vw, 80px);
-  font-weight: 400;
-  line-height: 1.12;
-  letter-spacing: -0.04em;
+.about__lines {
+  position: absolute;
+  top: 68%;
+  left: 50%;
+  display: grid;
+  width: min(900px, 84vw);
+  translate: -50% 0;
+  text-align: center;
 }
 
-/* Scrubbed: each token's --t runs 0 → 1 as the run's progress passes it. */
-.mw,
-.mchip {
-  --t: clamp(0, calc(var(--p, 0) * (var(--n) + 4) - var(--i)), 1);
-  margin-right: 0.24em;
+.about__line {
+  font-size: clamp(20px, 1.9vw, 32px);
+  line-height: 1.3;
+  letter-spacing: -0.03em;
+  color: var(--ink-2);
 }
 
-.mw {
-  display: inline-block;
-  opacity: calc(0.12 + var(--t) * 0.88);
-  transform: translateY(calc((1 - var(--t)) * 0.12em));
-  filter: blur(calc((1 - var(--t)) * 3px));
+.about__line .beat__kicker {
+  margin-bottom: 14px;
 }
 
-.mchip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25em;
-  height: 0.9em;
-  padding: 0 0.34em 0 0.28em;
-  border-radius: 999px;
-  font-size: 0.62em;
-  vertical-align: 0.16em;
-  letter-spacing: -0.02em;
-  /* Grows in from zero width, so the line opens up around it instead of leaving a hole. */
-  max-width: calc(var(--t) * 8em);
-  margin-right: calc(var(--t) * 0.24em);
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
-  opacity: var(--t);
-  transform: scale(calc(0.6 + var(--t) * 0.4));
-  transform-origin: left center;
 }
-
-.mchip .icon-mark {
-  width: 0.8em;
-  height: 0.8em;
-}
-
-.mchip b {
-  font-weight: 450;
-}
-
-.mchip--blue {
-  background: var(--accent);
-  color: #fff;
-}
-
-.mchip--ink {
-  background: var(--ink);
-  color: var(--bg);
-}
-
-.mchip--line {
-  border: 1.5px solid var(--ink);
-}
-
 
 /* ---------- Shared pinned-scene frame ---------- */
 
@@ -340,7 +302,7 @@
 /* ---------- 03 Work (light) ---------- */
 
 .work {
-  height: 420vh;
+  height: calc(100vh + (var(--n) - 1) * 62vh);
 }
 
 .work .run__copy {
@@ -381,50 +343,42 @@
   color: var(--muted);
 }
 
-/* Step labels, placed on the particle boxes (percent of the viewport, same layout as the shader). */
-.pipe-labels {
+.wbeat__also {
+  margin-top: 26px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The step name under the particle pictogram (centred on stepRegion in scene/layouts.ts). */
+.wsteps {
   position: absolute;
-  inset: 0;
+  top: 66%;
+  left: 71%;
+  display: grid;
+  width: 44vw;
+  translate: -50% 0;
+  text-align: center;
   pointer-events: none;
 }
 
-.pipe-labels__set {
-  position: absolute;
-  inset: 0;
-}
-
-.pipe-node {
-  position: absolute;
-  display: grid;
-  place-items: center;
-  padding: 0 8px;
-  transform: translate(-50%, -50%);
-  font-size: 12px;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
-  text-align: center;
-  color: var(--muted);
-  transition: color 0.6s var(--ease);
-}
-
-.pipe-node.is-lit {
-  color: var(--ink);
-}
-
-.pipe-node--out.is-lit {
-  color: var(--accent);
-  font-weight: 500;
-}
-
-.pipe-lane {
-  position: absolute;
-  transform: translateY(-160%);
+.wstep__count {
+  display: block;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  white-space: nowrap;
   color: var(--accent);
+}
+
+.wstep__name {
+  display: block;
+  margin-top: 12px;
+  font-size: clamp(34px, 3.4vw, 60px);
+  line-height: 1;
+  letter-spacing: -0.05em;
 }
 
 /* ---------- 04 Certifications (dark): horizontal track ---------- */
@@ -508,15 +462,19 @@
 
 @media (max-width: 900px), (max-aspect-ratio: 85/100) {
   .about__run {
-    height: 220vh;
+    height: 340vh;
   }
 
   .about__sticky .section-head {
     top: 92px;
   }
 
-  .manifesto {
-    font-size: clamp(30px, 8.6vw, 46px);
+  .about__lines {
+    top: 54%;
+  }
+
+  .about__line {
+    font-size: 22px;
   }
 
   .run__copy,
@@ -590,8 +548,20 @@
     font-size: 40px;
   }
 
-  .pipe-node {
-    font-size: 10px;
+  .wbeat__summary,
+  .wbeat__also {
+    display: none;
+  }
+
+  .wsteps {
+    top: 40.5%;
+    left: 50%;
+    width: 90vw;
+  }
+
+  .wstep__name {
+    margin-top: 8px;
+    font-size: 28px;
   }
 
   .ticks {

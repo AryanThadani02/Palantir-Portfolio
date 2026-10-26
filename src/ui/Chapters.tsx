@@ -1,24 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
-import { EXPERIENCE, STATS, WORK } from '../data/content'
-import { OBJECT_BY_ID, frame, linkedGroups } from '../data/graph'
+import { useEffect, useRef, type CSSProperties, type RefObject } from 'react'
+import { ABOUT_WORDS, EXPERIENCE, STATS, WORK, WORK_STEPS } from '../data/content'
+import { OBJECT_BY_ID, linkedGroups } from '../data/graph'
 import { beat, runProgress } from '../lib/runs'
 import { scrollToTarget } from '../lib/scroll'
-import { nodeHalf, pipelineLayout } from '../scene/layouts'
 import { SectionHead } from './common'
-import { IconMark, LogoTile } from './Logo'
+import { LogoTile } from './Logo'
 
 const isDark = (logo: string) => /vanyar|lachoo/.test(logo)
-const narrowNow = () => innerWidth / innerHeight < 0.85
-
-function useNarrow() {
-  const [narrow, setNarrow] = useState(narrowNow)
-  useEffect(() => {
-    const on = () => setNarrow(narrowNow())
-    addEventListener('resize', on)
-    return () => removeEventListener('resize', on)
-  }, [])
-  return narrow
-}
 
 /**
  * Drives a pinned run every frame: writes `--p` (progress) on the run, and for `n` beats crossfades every
@@ -66,39 +54,28 @@ function ChapterMark({ index, title }: { index: string; title: string }) {
   )
 }
 
-// ---------- 01 About: the manifesto ----------
-
-type Token = string | { chip: string; icon: string; tone: 'ink' | 'blue' | 'line' }
-
-const MANIFESTO: Token[] = [
-  'I', 'turn', 'messy', 'operational', 'data', { chip: 'raw.csv', icon: 'document', tone: 'line' },
-  'into', 'ontologies', { chip: 'Ontology', icon: 'graph', tone: 'blue' },
-  'people', 'can', 'act', 'on', '—', 'pipelines', { chip: 'Pipelines', icon: 'data-lineage', tone: 'ink' }, 'in,',
-  'governed', 'Workshop,', 'OSDK', 'and', 'AIP', 'applications', { chip: 'Apps', icon: 'application', tone: 'blue' }, 'out.',
-]
+// ---------- 01 About: a title sequence — the particles write one giant word per beat ----------
 
 export function About() {
   const run = useRef<HTMLDivElement>(null)
-  usePinnedRun(run)
+  usePinnedRun(run, ABOUT_WORDS.length)
   return (
     <section id="about" className="about" data-theme="light">
-      <div ref={run} className="about__run" data-film-run="6" style={{ '--n': MANIFESTO.length } as CSSProperties}>
+      <div ref={run} className="about__run" data-film-run="12">
         <div className="about__sticky">
           <SectionHead index="01" label="About" aside="Manifesto" />
-          <p className="manifesto">
-            {MANIFESTO.map((t, i) =>
-              typeof t === 'string' ? (
-                <span key={i} className="mw" style={{ '--i': i } as CSSProperties}>
-                  {t}
+          {/* The word itself is drawn by the particles; screen readers get it here. */}
+          <div className="about__lines">
+            {ABOUT_WORDS.map((a, k) => (
+              <p key={a.word} className="beat about__line" data-beat={k}>
+                <span className="beat__kicker">
+                  ({String(k + 1).padStart(2, '0')} / {String(ABOUT_WORDS.length).padStart(2, '0')}) <span className="sr-only">{a.word} — </span>
                 </span>
-              ) : (
-                <span key={i} className={`mchip mchip--${t.tone}`} style={{ '--i': i } as CSSProperties} aria-hidden>
-                  <IconMark icon={t.icon} />
-                  <b>{t.chip}</b>
-                </span>
-              ),
-            )}
-          </p>
+                {a.line}
+              </p>
+            ))}
+          </div>
+          <RunTicks count={ABOUT_WORDS.length} />
         </div>
       </div>
     </section>
@@ -222,31 +199,45 @@ export function ExperienceSection() {
   )
 }
 
-// ---------- 03 Work: the dots become each project's pipeline ----------
+// ---------- 03 Work: one big pictogram per pipeline step, morphing step to step ----------
+
+/** Where each project's steps start in WORK_STEPS. */
+const PROJECT_START = WORK.map((_, p) => WORK_STEPS.findIndex((st) => st.project === p))
 
 export function Work() {
   const run = useRef<HTMLElement>(null)
-  const labels = useRef<HTMLDivElement>(null)
-  const narrow = useNarrow()
-  // Light each step label as the wave reaches it (the same `frame.lit*` the dots use).
-  const onBeat = useRef(() => {
-    labels.current?.querySelectorAll<HTMLElement>('[data-step]').forEach((el) => {
-      const lit = el.dataset.project === '0' ? frame.lit0 : frame.lit1
-      el.classList.toggle('is-lit', lit > Number(el.dataset.step) + 0.15)
+  // Project copy holds for all of that project's steps (the step layers crossfade per step via data-beat).
+  const onBeat = useRef((b: number) => {
+    run.current?.querySelectorAll<HTMLElement>('[data-proj]').forEach((layer) => {
+      const p = Number(layer.dataset.proj)
+      const start = PROJECT_START[p]
+      const end = start + WORK[p].icons.length - 1
+      const o = Math.max(0, Math.min(1, 1 - Math.max(0, start - b, b - end) * 2.4))
+      layer.style.opacity = o.toFixed(3)
+      layer.style.transform = `translate3d(0, ${((b < start ? start - b : b > end ? end - b : 0) * 40).toFixed(1)}px, 0)`
+      layer.style.visibility = o > 0.001 ? 'visible' : 'hidden'
     })
   }).current
-  usePinnedRun(run, WORK.length, 0.7, onBeat)
-  const half = nodeHalf(narrow)
+  usePinnedRun(run, WORK_STEPS.length, 0.55, onBeat)
 
   return (
-    <section ref={run} id="work" className="run run--marked work" data-theme="light" data-shape="5" data-film-run="14">
+    <section
+      ref={run}
+      id="work"
+      className="run run--marked work"
+      data-theme="light"
+      data-shape="5"
+      data-film-run="20"
+      style={{ '--n': WORK_STEPS.length } as CSSProperties}
+    >
       <div className="run__sticky">
         <ChapterMark index="03" title="Selected work" />
         <div className="run__copy">
-          {WORK.map((cs, k) => {
+          {WORK.map((cs, p) => {
             const o = OBJECT_BY_ID.get(cs.id)!
+            const also = cs.flows.slice(1).map((f) => f.label)
             return (
-              <article key={cs.id} className="beat wbeat" data-beat={k}>
+              <article key={cs.id} className="beat wbeat" data-proj={p}>
                 <span className="beat__kicker">
                   ({cs.index}) {cs.sector}
                 </span>
@@ -256,53 +247,24 @@ export function Work() {
                   <span className="wbeat__value">{cs.outcome.value}</span>
                   <span className="wbeat__label">{cs.outcome.label}</span>
                 </div>
+                {also.length > 0 && <p className="wbeat__also">Also: {also.join(' · ')}</p>}
               </article>
             )
           })}
         </div>
 
-        {/* Step labels sit exactly on the particle boxes (shared layout in scene/layouts.ts). */}
-        <div ref={labels} className="pipe-labels" aria-hidden>
-          {WORK.map((cs, p) => {
-            const nodes = pipelineLayout(cs, narrow)
-            return (
-              <div key={cs.id} className="pipe-labels__set" data-beat={p}>
-                {cs.flows.map((f, lane) => {
-                  const first = nodes.find((nd) => nd.lane === lane && nd.first)!
-                  return (
-                    <span
-                      key={f.label}
-                      className="pipe-lane"
-                      style={{
-                        left: `${((first.x - half.x + 1) / 2) * 100}%`,
-                        top: `${((1 - (first.y + half.y)) / 2) * 100}%`,
-                      }}
-                    >
-                      {f.label}
-                    </span>
-                  )
-                })}
-                {nodes.map((nd) => (
-                  <span
-                    key={`${nd.lane}-${nd.step}`}
-                    className={`pipe-node ${nd.last ? 'pipe-node--out' : ''}`}
-                    data-project={p}
-                    data-step={nd.step}
-                    style={{
-                      left: `${((nd.x + 1) / 2) * 100}%`,
-                      top: `${((1 - nd.y) / 2) * 100}%`,
-                      width: `${half.x * 100}%`,
-                      height: `${half.y * 100}%`,
-                    }}
-                  >
-                    {nd.label}
-                  </span>
-                ))}
-              </div>
-            )
-          })}
+        {/* The pictogram above is drawn by the particles (scene/layouts.ts stepRegion); its step name sits below. */}
+        <div className="wsteps" aria-hidden>
+          {WORK_STEPS.map((st, k) => (
+            <div key={k} className="beat wstep" data-beat={k}>
+              <span className="wstep__count">
+                Step {String(st.step + 1).padStart(2, '0')} / {String(st.count).padStart(2, '0')}
+              </span>
+              <span className="wstep__name">{st.label}</span>
+            </div>
+          ))}
         </div>
-        <RunTicks count={WORK.length} />
+        <RunTicks count={WORK_STEPS.length} />
       </div>
     </section>
   )
