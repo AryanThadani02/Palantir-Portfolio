@@ -1,7 +1,7 @@
 // Page copy. Every claim here comes from the résumé.
 
 /** Experience, oldest first: the horizontal scroll is the journey, and each stop raises a taller tower. */
-// `logo` lives in public/logos/ (no college logo yet: its tile shows a graduation icon).
+// `logo` lives in public/logos/ (800px squares, made from the originals in assets/).
 export const EXPERIENCE = [
   { id: 'edu-bca', year: '2020', logo: '/logos/lachoo.jpg', short: 'BCA · Lachoo' },
   { id: 'role-oil', year: '2023', logo: '/logos/open-innovation-lab.jpg', short: 'Open Innovation Lab' },

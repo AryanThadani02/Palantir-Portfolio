@@ -787,14 +787,6 @@ ol {
   object-fit: contain;
 }
 
-/* The MTAS file has its mark in the upper-left of a large white canvas: zoom onto the mark. */
-.logo-tile img[src*='mtas'] {
-  padding: 0;
-  object-fit: cover;
-  object-position: 40% 42%;
-  transform: scale(1.7);
-}
-
 /* Logos that are already a full-bleed square (Vanyar) fill the tile edge to edge. */
 .logo-tile--dark img {
   padding: 0;
