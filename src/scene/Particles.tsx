@@ -28,7 +28,10 @@ const LOGO_TEX_W = 128
  */
 const WORD_BASE = LOGOS.length
 const STEP_BASE = WORD_BASE + ABOUT_WORDS.length
-const BLOCKS = STEP_BASE + WORK_STEPS.length
+/** The chapter numbers the dots hold while a chapter's title card is up (Experience, Work). */
+const MARKS = ['02', '03']
+const MARK_BASE = STEP_BASE + WORK_STEPS.length
+const BLOCKS = MARK_BASE + MARKS.length
 const WORD_FONT = '500 260px Geist, system-ui, sans-serif'
 
 /** Deterministic PRNG so the layout is identical on every load. */
@@ -155,13 +158,30 @@ function wordCanvases() {
   })
 }
 
-/** (Re)writes the word blocks of the glyph texture — called again once Geist has loaded. */
+/** A chapter number, set large on a square canvas so it fills the chapter's visual region. */
+function markCanvas(text: string) {
+  const c = document.createElement('canvas')
+  c.width = c.height = 600
+  const g = c.getContext('2d')!
+  g.fillStyle = '#fff'
+  g.fillRect(0, 0, 600, 600)
+  g.font = WORD_FONT.replace('260px', '380px')
+  g.letterSpacing = '-14px'
+  g.textAlign = 'center'
+  g.textBaseline = 'middle'
+  g.fillStyle = '#000'
+  g.fillText(text, 300, 316)
+  return c
+}
+
+/** (Re)writes the type blocks of the glyph texture (words, chapter numbers) — called again once Geist has loaded. */
 function writeWords(tex: DataTexture, n: number, rowsPer: number) {
   const rand = mulberry32(11)
   const data = tex.image.data as Float32Array
-  wordCanvases().forEach((c, wi) => {
-    sampleLogo(c, n, rand, 900).forEach((p, i) => data.set([p.x, p.y, 0, 1], ((WORD_BASE + wi) * rowsPer * LOGO_TEX_W + i) * 4))
-  })
+  const write = (c: HTMLCanvasElement, block: number, res: number) =>
+    sampleLogo(c, n, rand, res).forEach((p, i) => data.set([p.x, p.y, 0, 1], (block * rowsPer * LOGO_TEX_W + i) * 4))
+  wordCanvases().forEach((c, wi) => write(c, WORD_BASE + wi, 900))
+  MARKS.forEach((m, mi) => write(markCanvas(m), MARK_BASE + mi, 400))
   tex.needsUpdate = true
 }
 
@@ -200,9 +220,9 @@ function buildGeometry(face: Img, depth: Img, logos: Img[]) {
   const rowsPer = Math.ceil(n / LOGO_TEX_W)
   const logoPos = new Float32Array(LOGO_TEX_W * rowsPer * BLOCKS * 4)
   const logoCol = new Uint8Array(LOGO_TEX_W * rowsPer * BLOCKS * 4)
-  const glyphs: Img[] = [...logos, ...wordCanvases(), ...WORK_STEPS.map((st) => iconCanvas(st.icon))]
+  const glyphs: Img[] = [...logos, ...wordCanvases(), ...WORK_STEPS.map((st) => iconCanvas(st.icon)), ...MARKS.map(markCanvas)]
   glyphs.forEach((img, li) => {
-    const pts = sampleLogo(img, n, rand, li >= WORD_BASE && li < STEP_BASE ? 900 : li < WORD_BASE ? 400 : 200)
+    const pts = sampleLogo(img, n, rand, li >= WORD_BASE && li < STEP_BASE ? 900 : li < WORD_BASE || li >= MARK_BASE ? 400 : 200)
     pts.forEach((p, i) => {
       const t = (li * rowsPer * LOGO_TEX_W + i) * 4
       logoPos.set([p.x, p.y, 0, 1], t)
@@ -248,6 +268,7 @@ function buildGeometry(face: Img, depth: Img, logos: Img[]) {
 const vertexShader = /* glsl */ `
   #define WORD_BASE ${WORD_BASE.toFixed(1)}
   #define STEP_BASE ${STEP_BASE.toFixed(1)}
+  #define MARK_BASE ${MARK_BASE.toFixed(1)}
   #define BLOCKS ${BLOCKS.toFixed(1)}
   #define MAX_PILLS ${MAX_PILLS}
   uniform mat4 uPortraitM;
@@ -338,7 +359,15 @@ const vertexShader = /* glsl */ `
 
   // ---- 4: company logos from the sampled texture
   vec4 logoTexel(sampler2D t, float logo) { return glyphTexel(t, logo); }
+  // Below 0 the dots still hold the chapter number ("02") from the title card, morphing into the first logo.
+  float introK(float s) { return easeInOut(clamp((s + 1.0) * 1.2 - aRand.y * 0.2, 0.0, 1.0)); }
   vec3 logoPos() {
+    if (uLogo < 0.0) {
+      float k = introK(uLogo);
+      vec2 a = glyphTexel(tLogoPos, MARK_BASE).xy;
+      vec2 swirl = vec2(-a.y, a.x) * sin(k * PI) * 0.35;
+      return region(mix(a, logoTexel(tLogoPos, 0.0).xy, k) * 0.82 + swirl);
+    }
     float s = clamp(uLogo, 0.0, 4.0);
     float i = min(floor(s), 3.0);
     float k = easeInOut(clamp((s - i) * 1.2 - aRand.y * 0.2, 0.0, 1.0));
@@ -348,6 +377,7 @@ const vertexShader = /* glsl */ `
     return region(mix(a, b, k) * 0.82 + swirl);
   }
   vec3 logoColor() {
+    if (uLogo < 0.0) return mix(glyphTexel(tLogoCol, MARK_BASE).rgb, logoTexel(tLogoCol, 0.0).rgb, introK(uLogo));
     float s = clamp(uLogo, 0.0, 4.0);
     float i = min(floor(s), 3.0);
     float k = easeInOut(clamp((s - i) * 1.2 - aRand.y * 0.2, 0.0, 1.0));
@@ -356,6 +386,13 @@ const vertexShader = /* glsl */ `
 
   // ---- 5: Work — one big pictogram per pipeline step, morphing step to step
   vec3 stepPos() {
+    if (uStep < 0.0) {
+      float k = introK(uStep);
+      vec2 q = mix(glyphTexel(tLogoPos, MARK_BASE + 1.0).xy, glyphTexel(tLogoPos, STEP_BASE).xy * 0.82, k);
+      float burst = sin(k * PI) * 0.35;
+      q += normalize(vec2(aRand.z, aRand.w) - 0.5 + 1e-4) * (0.25 + aRand.y * 0.6) * burst;
+      return regionOf(uStepRegion, q) + vec3(0.0, 0.0, burst * 0.35 * uHalf.y);
+    }
     float last = uStepCount - 1.0;
     float s = clamp(uStep, 0.0, last);
     vec2 m = morphOf(s, last);

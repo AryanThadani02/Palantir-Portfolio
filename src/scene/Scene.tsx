@@ -4,7 +4,7 @@ import { MathUtils } from 'three'
 import type { PerspectiveCamera } from 'three'
 import { frame, smoothstep } from '../data/graph'
 import { ABOUT_WORDS, EXPERIENCE, WORK_STEPS } from '../data/content'
-import { beat, runProgress } from '../lib/runs'
+import { TITLE, afterTitle, beat, runProgress } from '../lib/runs'
 
 import { releaseScroll } from '../lib/scroll'
 import { overlayRefs, setIntroDone } from '../lib/store'
@@ -127,8 +127,11 @@ function Rig() {
     // Each pinned chapter scrubs its own sub-shape; damped so scroll jitter never reaches the dots.
     const d = (cur: number, to: number) => MathUtils.damp(cur, to, 6, step)
     frame.word = d(frame.word, beat(runProgress(els.aboutRun), ABOUT_WORDS.length))
-    frame.logo = d(frame.logo, beat(runProgress(els.exp), EXPERIENCE.length))
-    frame.step = d(frame.step, beat(runProgress(els.work), WORK_STEPS.length))
+    // While a chapter's title card is up (start of the run) the dots hold its number: -1 → 0 hands over to
+    // the first logo / pictogram just as the first role or project fades in.
+    const titled = (p: number, n: number) => beat(afterTitle(p), n) - (1 - smoothstep(TITLE * 0.2, TITLE, p))
+    frame.logo = d(frame.logo, titled(runProgress(els.exp), EXPERIENCE.length))
+    frame.step = d(frame.step, titled(runProgress(els.work), WORK_STEPS.length))
 
     // Theme: whichever section owns the middle of the viewport.
     let theme = 'dark'

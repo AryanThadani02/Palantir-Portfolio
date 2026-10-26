@@ -1,7 +1,7 @@
 import { useEffect, useRef, type CSSProperties, type RefObject } from 'react'
 import { ABOUT_WORDS, EXPERIENCE, WORK, WORK_STEPS } from '../data/content'
 import { OBJECT_BY_ID, linkedGroups } from '../data/graph'
-import { beat, runProgress } from '../lib/runs'
+import { afterTitle, beat, runProgress, titledAt } from '../lib/runs'
 import { scrollToTarget } from '../lib/scroll'
 import { SectionHead } from './common'
 import { LogoTile } from './Logo'
@@ -12,14 +12,21 @@ const isDark = (logo: string) => /vanyar|lachoo/.test(logo)
  * Drives a pinned run every frame: writes `--p` (progress) on the run, and for `n` beats crossfades every
  * `[data-beat=k]` layer (opacity, a small rise) and scrubs any `[data-count]` number inside it.
  */
-function usePinnedRun(ref: RefObject<HTMLElement | null>, n = 1, hold = 0.55, onBeat?: (b: number, p: number) => void) {
+function usePinnedRun(
+  ref: RefObject<HTMLElement | null>,
+  n = 1,
+  hold = 0.55,
+  onBeat?: (b: number, p: number) => void,
+  titled = false,
+) {
   useEffect(() => {
     let id = 0
     const tick = () => {
       const el = ref.current
       if (el) {
         const p = runProgress(el)
-        const b = beat(p, n, hold)
+        // Titled runs hold their first beat back until the title card has gone (see TITLE in lib/runs).
+        const b = beat(titled ? afterTitle(p) : p, n, hold)
         el.style.setProperty('--p', p.toFixed(4))
         el.style.setProperty('--b', b.toFixed(4))
         el.querySelectorAll<HTMLElement>('[data-beat]').forEach((layer) => {
@@ -41,7 +48,7 @@ function usePinnedRun(ref: RefObject<HTMLElement | null>, n = 1, hold = 0.55, on
     }
     id = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(id)
-  }, [ref, n, hold, onBeat])
+  }, [ref, n, hold, onBeat, titled])
 }
 
 /** The opening card of a chapter: a big index + title that masks away as the run begins. */
@@ -110,10 +117,10 @@ function RunTicks({ count, labels, at, onPick }: { count: number; labels?: strin
 
 export function ExperienceSection() {
   const run = useRef<HTMLElement>(null)
-  usePinnedRun(run, EXPERIENCE.length)
+  usePinnedRun(run, EXPERIENCE.length, 0.55, undefined, true)
   const pick = (k: number) => {
     const el = run.current!
-    scrollToTarget(el.offsetTop + (k / (EXPERIENCE.length - 1)) * (el.offsetHeight - innerHeight), { duration: 1.6 })
+    scrollToTarget(el.offsetTop + titledAt(k / (EXPERIENCE.length - 1)) * (el.offsetHeight - innerHeight), { duration: 1.6 })
   }
 
   return (
@@ -167,7 +174,12 @@ export function ExperienceSection() {
             )
           })}
         </div>
-        <RunTicks count={EXPERIENCE.length} labels={EXPERIENCE.map((e) => e.year)} onPick={pick} />
+        <RunTicks
+          count={EXPERIENCE.length}
+          labels={EXPERIENCE.map((e) => e.year)}
+          at={EXPERIENCE.map((_, k) => titledAt(k / (EXPERIENCE.length - 1)))}
+          onPick={pick}
+        />
       </div>
     </section>
   )
@@ -192,10 +204,10 @@ export function Work() {
       layer.style.visibility = o > 0.001 ? 'visible' : 'hidden'
     })
   }).current
-  usePinnedRun(run, WORK_STEPS.length, 0.55, onBeat)
+  usePinnedRun(run, WORK_STEPS.length, 0.55, onBeat, true)
   const pick = (p: number) => {
     const el = run.current!
-    scrollToTarget(el.offsetTop + (PROJECT_START[p] / (WORK_STEPS.length - 1)) * (el.offsetHeight - innerHeight), { duration: 1.6 })
+    scrollToTarget(el.offsetTop + titledAt(PROJECT_START[p] / (WORK_STEPS.length - 1)) * (el.offsetHeight - innerHeight), { duration: 1.6 })
   }
 
   return (
@@ -244,7 +256,7 @@ export function Work() {
         <RunTicks
           count={WORK.length}
           labels={WORK.map((cs) => cs.index)}
-          at={PROJECT_START.map((k) => k / (WORK_STEPS.length - 1))}
+          at={PROJECT_START.map((k) => titledAt(k / (WORK_STEPS.length - 1)))}
           onPick={pick}
         />
       </div>

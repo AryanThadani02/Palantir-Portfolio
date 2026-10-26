@@ -77,7 +77,8 @@
 }
 
 /* Chapters that open on a title card hold their copy back until the card has gone. */
-.run--marked .run__copy {
+.run--marked .run__copy,
+.run--marked .wsteps {
   opacity: clamp(0, calc((var(--p, 0) - 0.03) * 16), 1);
 }
 
