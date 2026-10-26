@@ -202,7 +202,7 @@ function buildGeometry(face: Img, depth: Img, logos: Img[]) {
   const logoCol = new Uint8Array(LOGO_TEX_W * rowsPer * BLOCKS * 4)
   const glyphs: Img[] = [...logos, ...wordCanvases(), ...WORK_STEPS.map((st) => iconCanvas(st.icon))]
   glyphs.forEach((img, li) => {
-    const pts = sampleLogo(img, n, rand, li >= WORD_BASE && li < STEP_BASE ? 900 : 200)
+    const pts = sampleLogo(img, n, rand, li >= WORD_BASE && li < STEP_BASE ? 900 : li < WORD_BASE ? 400 : 200)
     pts.forEach((p, i) => {
       const t = (li * rowsPer * LOGO_TEX_W + i) * 4
       logoPos.set([p.x, p.y, 0, 1], t)
