@@ -162,7 +162,7 @@ function IntroCaption() {
 
 function Stack() {
   return (
-    <section id="stack" className="section stack" data-theme="dark" data-film="6">
+    <section id="stack" className="section stack" data-theme="dark" data-shape="6" data-film="6">
       <SectionHead index="05" label="Stack" aside={`${SKILLS.length} tools`} />
       <h2 className="stack__title skew" data-reveal>
         <span className="mask-line">

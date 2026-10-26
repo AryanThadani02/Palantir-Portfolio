@@ -3,10 +3,10 @@ import { useFrame } from '@react-three/fiber'
 import { useTexture } from '@react-three/drei'
 import {
   BufferAttribute, BufferGeometry, DataTexture, FloatType, Matrix4, NearestFilter, RGBAFormat, ShaderMaterial,
-  UnsignedByteType, Vector2,
+  UnsignedByteType, Vector2, Vector4,
 } from 'three'
 import type { PerspectiveCamera, Points } from 'three'
-import { frame } from '../data/graph'
+import { MAX_PILLS, PILL_STRIDE, frame } from '../data/graph'
 import { ABOUT_WORDS, EXPERIENCE, STEPS_PER_PROJECT, WORK_STEPS } from '../data/content'
 import { ICONS } from '../ui/icons'
 import { PORTRAIT_TEXTURES, TABLE_CENTER, portrait } from './portrait'
@@ -249,12 +249,19 @@ const vertexShader = /* glsl */ `
   #define WORD_BASE ${WORD_BASE.toFixed(1)}
   #define STEP_BASE ${STEP_BASE.toFixed(1)}
   #define BLOCKS ${BLOCKS.toFixed(1)}
+  #define MAX_PILLS ${MAX_PILLS}
   uniform mat4 uPortraitM;
   uniform vec2 uPortraitSize, uPortraitOffset, uEndSize, uEndOffset, uHalf;
   uniform vec3 uCenter, uRegion, uStepRegion, uWordLayout;
   uniform float uTableScale, uTime, uShape, uLight, uScale, uDpr, uNarrow, uReform, uCount;
   uniform float uWord, uLogo, uStep, uStepCount, uStepsPer, uRowsPer;
   uniform sampler2D tLogoPos, tLogoCol;
+  // Stack floor: arena (centre, half-size in view units), its px size, the pills (see frame.pills) and cursor.
+  uniform vec4 uBox;
+  uniform vec2 uBoxPx;
+  uniform vec4 uPillA[MAX_PILLS];
+  uniform vec4 uPillB[MAX_PILLS];
+  uniform vec3 uCursor;
   attribute vec2 aPortrait;
   attribute vec3 aPColor;
   attribute vec4 aSphere;   // resting-cloud position
@@ -361,6 +368,76 @@ const vertexShader = /* glsl */ `
     return regionOf(uStepRegion, q) + vec3(0.0, 0.0, burst * 0.35 * uHalf.y);
   }
 
+  // ---- 6: Stack — the arena's dotted floor, bent around the physics pills like iron filings
+  const float PITCH = 15.0;
+  const float INSET = 10.0;
+  vec3 gFloor;       // world position
+  float gFloorLight; // 0 resting … 1 disturbed
+  float gFloorOn;    // 0 for dots the grid doesn't need
+
+  vec2 rot(vec2 v, float a) { float c = cos(a), s = sin(a); return vec2(c * v.x - s * v.y, s * v.x + c * v.y); }
+
+  void computeFloor() {
+    vec2 inner = max(uBoxPx - 2.0 * INSET, vec2(1.0));
+    float cols = max(1.0, floor(inner.x / PITCH) + 1.0);
+    float rows = max(1.0, floor(inner.y / PITCH) + 1.0);
+    float cells = cols * rows;
+    float id = aRand.x;
+    gFloorOn = id < cells ? 1.0 : 0.0;
+    float k = mod(id, cells);
+    vec2 g = vec2(mod(k, cols), floor(k / cols));
+    // Centre the lattice in the box.
+    vec2 p = INSET + (inner - (vec2(cols, rows) - 1.0) * PITCH) * 0.5 + g * PITCH;
+
+    vec2 push = vec2(0.0);
+    float light = 0.0;
+    for (int j = 0; j < MAX_PILLS; j++) {
+      vec4 a = uPillA[j];
+      if (a.z <= 0.0) continue;
+      vec4 b = uPillB[j];
+      float heat = floor(b.w / 1000.0);
+      float age = b.w - heat * 1000.0;
+      float gain = heat < 0.5 ? 0.35 : heat > 1.5 ? 1.45 : 1.0;
+      // Distance to the rotated pill (a capsule: a segment of half-length (w - h) with radius h).
+      vec2 d = rot(p - a.xy, -b.x);
+      float r = a.w;
+      vec2 core = vec2(clamp(d.x, -(a.z - r), a.z - r), 0.0);
+      vec2 off = d - core;
+      float len = length(off);
+      float dist = len - r;
+      vec2 n = rot(len > 0.001 ? off / len : vec2(0.0, 1.0), b.x);
+      float f = smoothstep(64.0, 0.0, dist) * gain;
+      vec2 vel = b.yz;
+      push += n * f * 22.0 + vel * f * 1.6;
+      light += f * (0.55 + min(length(vel), 12.0) * 0.06);
+      // Impact ripple: a ring running out from the pill for ~1.4s.
+      if (age < 1.4) {
+        vec2 c = p - a.xy;
+        float cd = length(c);
+        float ring = exp(-pow((cd - age * 520.0) / 26.0, 2.0)) * (1.0 - age / 1.4);
+        push += (cd > 0.001 ? c / cd : vec2(0.0)) * ring * 12.0;
+        light += ring * 0.9;
+      }
+    }
+    if (uCursor.z > 0.5) {
+      vec2 c = p - uCursor.xy;
+      float cd = length(c);
+      float f = smoothstep(120.0, 0.0, cd);
+      push += (cd > 0.001 ? c / cd : vec2(0.0)) * f * 16.0;
+      light += f * 0.35;
+    }
+    float pl = length(push);
+    if (pl > 48.0) push *= 48.0 / pl;
+    p += push;
+    gFloorLight = clamp(light, 0.0, 1.0);
+    // Dots shoved past the arena's edge fade out instead of spilling over the page.
+    vec2 over = max(vec2(4.0) - p, p - (uBoxPx - 4.0));
+    gFloorOn *= 1.0 - smoothstep(0.0, 6.0, max(over.x, over.y));
+
+    vec2 uv = p / uBoxPx;
+    gFloor = norm(vec3(uBox.x + (uv.x * 2.0 - 1.0) * uBox.z, uBox.y + (1.0 - uv.y * 2.0) * uBox.w, 0.0));
+  }
+
   vec3 shapePos(int s) {
     if (s == 0) return (uPortraitM * vec4((aPortrait - 0.5) * uPortraitSize + uPortraitOffset, 0.0, 1.0)).xyz;
     if (s == 1) return uCenter + (position - uCenter) * vec3(uTableScale, uTableScale, 1.0);
@@ -368,6 +445,7 @@ const vertexShader = /* glsl */ `
     if (s == 3) return logoPos();
     if (s == 4) return stepPos();
     if (s == 5) return cloudPos();
+    if (s == 6) return gFloor;
     return (uPortraitM * vec4((aPortrait - 0.5) * uEndSize + uEndOffset, 0.0, 1.0)).xyz;
   }
 
@@ -382,7 +460,8 @@ const vertexShader = /* glsl */ `
     if (s == 2) return wordColor(ink, acc);
     if (s == 3) return logoColor();
     if (s == 4) return aMeta.x > 0.82 ? ink : acc;
-    if (s == 6) return aPColor * 1.1;
+    if (s == 6) return mix(ink * 0.8, acc * 1.25, gFloorLight);
+    if (s == 7) return aPColor * 1.1;
     return aMeta.x > 0.8 ? acc : ink;
   }
 
@@ -393,6 +472,7 @@ const vertexShader = /* glsl */ `
     if (s == 3) return 0.95;
     if (s == 4) return 0.9;
     if (s == 5) return 0.0;
+    if (s == 6) return gFloorOn * (0.26 + gFloorLight * 0.7);
     return 0.95;
   }
 
@@ -401,13 +481,19 @@ const vertexShader = /* glsl */ `
     if (s == 1) return aMeta.w;
     if (s == 2) return mix(0.046, 0.032, uNarrow);
     if (s == 3) return 0.05;
-    if (s == 6) return 0.09;
+    if (s == 6) return 0.03 + gFloorLight * 0.016;
+    if (s == 7) return 0.09;
     return 0.042;
   }
 
   void main() {
-    float v = clamp(uShape, 0.0, 6.0);
-    int i = int(min(floor(v), 5.0));
+    float v = clamp(uShape, 0.0, 7.0);
+    int i = int(min(floor(v), 6.0));
+    // The floor loops over every pill: only pay for it while the Stack is on screen.
+    gFloor = vec3(0.0);
+    gFloorLight = 0.0;
+    gFloorOn = 0.0;
+    if (v > 5.0 && v < 7.0) computeFloor();
     float f = v - float(i);
     float k;
     if (i == 0) k = easeInOut(clamp((f - aMeta.z) / 0.38, 0.0, 1.0));
@@ -487,6 +573,11 @@ export function Particles() {
         uWordLayout: { value: { x: 0, y: 0, z: 1 } },
         tLogoPos: { value: built.logoPos },
         tLogoCol: { value: built.logoCol },
+        uBox: { value: new Vector4() },
+        uBoxPx: { value: new Vector2(1, 1) },
+        uPillA: { value: Array.from({ length: MAX_PILLS }, () => new Vector4()) },
+        uPillB: { value: Array.from({ length: MAX_PILLS }, () => new Vector4()) },
+        uCursor: { value: { x: -999, y: -999, z: 0 } },
       },
     })
     // The words were first drawn in a fallback face; redraw them in Geist once it's loaded.
@@ -526,6 +617,20 @@ export function Particles() {
     u.uWord.value = frame.word
     u.uLogo.value = frame.logo
     u.uStep.value = frame.step
+    if (frame.shape > 5 && frame.shape < 7) {
+      const b = frame.box
+      u.uBox.value.set(b.x, b.y, b.hx, b.hy)
+      u.uBoxPx.value.set(b.w, b.h)
+      const pa = u.uPillA.value as Vector4[]
+      const pb = u.uPillB.value as Vector4[]
+      const f = frame.pills
+      for (let j = 0; j < MAX_PILLS; j++) {
+        const o = j * PILL_STRIDE
+        pa[j].set(f[o], f[o + 1], f[o + 2], f[o + 3])
+        pb[j].set(f[o + 4], f[o + 5], f[o + 6], f[o + 7])
+      }
+      u.uCursor.value = { x: frame.cursor.x, y: frame.cursor.y, z: frame.cursor.on }
+    }
     u.uPortraitM.value.copy(portrait.matrix)
     u.uPortraitSize.value.copy(portrait.size)
     u.uPortraitOffset.value.copy(portrait.offset)

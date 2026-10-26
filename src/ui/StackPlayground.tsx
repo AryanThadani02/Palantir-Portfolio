@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import Matter from 'matter-js'
 import { STACK } from '../data/content'
-import { usedIn } from '../data/graph'
+import { MAX_PILLS, PILL_STRIDE, frame, usedIn } from '../data/graph'
 import { setCursorLabel } from '../lib/store'
 import { pointer } from '../lib/pointer'
 import { IconMark } from './Logo'
 
-const { Engine, Bodies, Body, Composite, Constraint, Vector } = Matter
+const { Engine, Events, Bodies, Body, Composite, Constraint, Vector } = Matter
 
 const GROUP_KEYS = ['foundry', 'ai', 'lang', 'data'] as const
-const ITEMS = STACK.flatMap((g, gi) => g.items.map((it) => ({ ...it, group: gi })))
+const ITEMS = STACK.flatMap((g, gi) => g.items.map((it) => ({ ...it, group: gi }))).slice(0, MAX_PILLS)
 const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches
 /** Cursor repel radius (px) and strength. */
 const REPEL_R = 130
@@ -26,6 +26,8 @@ export function StackPlayground() {
   const pills = useRef<(HTMLButtonElement | null)[]>([])
   const api = useRef<{ hop: (group: number | null) => void; tiltOn: () => void } | null>(null)
   const [active, setActive] = useState<number | null>(null)
+  const activeRef = useRef(active)
+  activeRef.current = active
   const [tilt, setTilt] = useState<Tilt>('off')
 
   useEffect(() => {
@@ -54,6 +56,17 @@ export function StackPlayground() {
     }
 
     const bodies: (Matter.Body | null)[] = ITEMS.map(() => null)
+    // When each pill last hit something hard (ms) — the floor ripples out from it.
+    const impactAt = ITEMS.map(() => -1e9)
+    Events.on(engine, 'collisionStart', (ev) => {
+      const now = performance.now()
+      for (const pair of ev.pairs) {
+        for (const b of [pair.bodyA, pair.bodyB]) {
+          const i = bodies.indexOf(b)
+          if (i >= 0 && b.speed > 3.5 && now - impactAt[i] > 600) impactAt[i] = now
+        }
+      }
+    })
     const sizes = ITEMS.map((_, i) => ({ w: pills.current[i]!.offsetWidth, h: pills.current[i]!.offsetHeight }))
 
     const spawn = (i: number) => {
@@ -188,12 +201,20 @@ export function StackPlayground() {
           }
         }
         Engine.update(engine, dt)
+        const f = frame.pills
         bodies.forEach((b, i) => {
           if (!b) return
           const { w, h } = sizes[i]
           pills.current[i]!.style.transform =
             `translate3d(${(b.position.x - w / 2).toFixed(1)}px, ${(b.position.y - h / 2).toFixed(1)}px, 0) rotate(${b.angle.toFixed(3)}rad)`
+          // Hand the pill to the particle floor (it bends around it).
+          const heat = activeRef.current === null ? 1 : ITEMS[i].group === activeRef.current ? 2 : 0
+          const age = REDUCED_MOTION ? 99 : Math.min(99, (now - impactAt[i]) / 1000)
+          f.set([b.position.x, b.position.y, w / 2, h / 2, b.angle, b.velocity.x, b.velocity.y, age + 1000 * heat], i * PILL_STRIDE)
         })
+        frame.cursor.x = mouse.x
+        frame.cursor.y = mouse.y
+        frame.cursor.on = mouse.on ? 1 : 0
       }
       raf = requestAnimationFrame(tick)
     }
@@ -214,6 +235,7 @@ export function StackPlayground() {
       window.removeEventListener('pointercancel', up)
       window.removeEventListener('deviceorientation', orient)
       Engine.clear(engine)
+      frame.pills.fill(0)
     }
   }, [])
 

@@ -671,16 +671,14 @@ ol {
   color: var(--accent-soft);
 }
 
-/* The arena: a quiet dotted floor-plan the pills land on. */
+/* The arena. Its dotted floor is the particle field (Particles.tsx, shape 6), which bends around the pills. */
 .play__box {
   position: relative;
   height: 74vh;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 22px;
-  background:
-    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 12%, transparent) 1px, transparent 0) 0 0 / 26px 26px,
-    radial-gradient(120% 80% at 50% 110%, rgba(76, 144, 240, 0.12), transparent 60%);
+  background: radial-gradient(120% 80% at 50% 110%, rgba(76, 144, 240, 0.12), transparent 60%);
   touch-action: pan-y;
 }
 
