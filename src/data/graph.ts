@@ -45,16 +45,21 @@ export const frame = {
   intro: 0,
   /**
    * Which shape the particles hold, as a continuous value:
-   * 0 portrait · 1 raw table · 2 horizon · 3 career skyline · 4 hidden (Work) · 5 hidden (Stack) · 6 colour portrait.
+   * 0 portrait · 1 raw table · 2 field (manifesto) · 3 stats · 4 company logos · 5 pipelines · 6 hidden · 7 colour portrait.
    */
   shape: 0,
   /** 0 dark theme … 1 light theme (eased). */
   light: 0,
-  /** Experience skyline: normalised x of the first tower, spacing between towers, and the active tower. */
-  trackBase: 0,
-  slideW: 1,
-  activeTower: 0,
-  towerScale: 1,
+  /** Field: 0 scattered noise → 1 aligned grid (manifesto progress). */
+  field: 0,
+  /** Stats: continuous sub-shape 0 bars · 1 ring · 2 badges · 3 pair. */
+  stat: 0,
+  /** Experience: continuous logo index 0..4 (oldest → newest). */
+  logo: 0,
+  /** Work: continuous project index 0..1, plus how far each project's wave has lit its steps. */
+  pipe: 0,
+  lit0: 0,
+  lit1: 0,
   /** 0..1 at Contact: the regathered particles resolve into the real photo. */
   reform: 0,
 }

@@ -139,8 +139,10 @@ export function CertAssembly({ image, title, date, active }: { image: string; ti
       const dpr = el.width / el.clientWidth
       g.setTransform(dpr, 0, 0, dpr, 0, 0)
       g.clearRect(0, 0, el.clientWidth, el.clientHeight)
+      const sharp = Math.min(1, Math.max(0, (s.p - 0.88) / 0.12))
       if (s.p > 0) {
-        for (const d of s.dots) {
+        // Once the sharp image is fully in, the dots underneath are redundant (and their grid overhangs it).
+        if (sharp < 1) for (const d of s.dots) {
           const t = Math.min(1, Math.max(0, (s.p - d.delay) / FLIGHT))
           if (t <= 0) continue
           const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
@@ -149,7 +151,6 @@ export function CertAssembly({ image, title, date, active }: { image: string; ti
           g.fillRect(d.sx + (d.x - d.sx) * e, d.sy + (d.y - d.sy) * e, s.size, s.size)
         }
         // Once settled, the real image resolves on top of the dots.
-        const sharp = Math.min(1, Math.max(0, (s.p - 0.88) / 0.12))
         if (sharp > 0 && s.source) {
           g.globalAlpha = sharp
           g.drawImage(s.source, s.rect.x, s.rect.y, s.rect.w, s.rect.h)

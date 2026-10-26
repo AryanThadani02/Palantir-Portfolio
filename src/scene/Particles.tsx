@@ -1,11 +1,15 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useTexture } from '@react-three/drei'
-import { BufferAttribute, BufferGeometry, Matrix4, ShaderMaterial, Vector2 } from 'three'
+import {
+  BufferAttribute, BufferGeometry, DataTexture, FloatType, Matrix4, NearestFilter, RGBAFormat, ShaderMaterial,
+  UnsignedByteType, Vector2, Vector4,
+} from 'three'
 import type { PerspectiveCamera, Points } from 'three'
 import { frame } from '../data/graph'
-import { EXPERIENCE } from '../data/content'
+import { EXPERIENCE, WORK } from '../data/content'
 import { PORTRAIT_TEXTURES, TABLE_CENTER, portrait } from './portrait'
+import { MAX_NODES, nodeHalf, pipelineLayout, visualRegion } from './layouts'
 
 // The raw table: fields of varying width, rows of "text" whose length varies per cell.
 const FIELD_WIDTHS = [20, 32, 18, 28, 15, 25]
@@ -14,9 +18,9 @@ const ROWS = 60
 const TABLE_W = 17
 const TABLE_H = 7
 
-/** Career skyline: one tower per experience entry, each taller than the last. */
-const TOWERS = EXPERIENCE.length
-const towerHeight = (k: number) => 0.42 + k * 0.24
+/** Company logos, oldest first — the order the Experience chapter morphs through. */
+const LOGOS = EXPERIENCE.map((e) => e.logo)
+const LOGO_TEX_W = 128
 
 /** Deterministic PRNG so the layout is identical on every load. */
 function mulberry32(seed: number) {
@@ -40,41 +44,74 @@ function pixels(image: Img, w: number, h: number) {
   return ctx.getImageData(0, 0, w, h).data
 }
 
-/**
- * Samples `count` points evenly over the person in the portrait (near in the depth map): one jittered point per
- * grid cell, so dark hair and beard are covered as densely as the bright skin and headphones.
- */
+/** Stratified sampling: one jittered point per grid cell, kept with probability `weight(x, y)`; exactly `count`. */
+function stratified<T>(w: number, h: number, count: number, rand: () => number, weight: (x: number, y: number) => number, make: (x: number, y: number) => T) {
+  let area = 0
+  for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) area += weight(x, y) * 4
+  const step = Math.sqrt(Math.max(1, area) / count)
+  const out: T[] = []
+  for (let gy = 0; gy < h; gy += step) {
+    for (let gx = 0; gx < w; gx += step) {
+      const x = Math.min(w - 1, Math.floor(gx + rand() * step))
+      const y = Math.min(h - 1, Math.floor(gy + rand() * step))
+      if (rand() > weight(x, y)) continue
+      out.push(make(x, y))
+    }
+  }
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  while (out.length < count && out.length) out.push(out[Math.floor(rand() * out.length)])
+  return out.slice(0, count)
+}
+
+/** Points evenly over the person in the portrait (near in the depth map). */
 function samplePortrait(image: Img, depthImage: Img, count: number, rand: () => number) {
   const w = 600
   const h = Math.round(w / (image.width / image.height))
   const data = pixels(image, w, h)
   const depth = pixels(depthImage, w, h)
-  const nearAt = (x: number, y: number) => Math.min(1, Math.max(0, (depth[(y * w + x) * 4] / 255 - 0.32) / 0.12))
-
-  let area = 0
-  for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) area += nearAt(x, y) * 4
-  const step = Math.sqrt(area / count)
-
-  const out: { u: number; v: number; r: number; g: number; b: number }[] = []
-  for (let gy = 0; gy < h; gy += step) {
-    for (let gx = 0; gx < w; gx += step) {
-      const x = Math.min(w - 1, Math.floor(gx + rand() * step))
-      const y = Math.min(h - 1, Math.floor(gy + rand() * step))
-      if (rand() > nearAt(x, y)) continue
+  return stratified(
+    w, h, count, rand,
+    (x, y) => Math.min(1, Math.max(0, (depth[(y * w + x) * 4] / 255 - 0.32) / 0.12)),
+    (x, y) => {
       const i = (y * w + x) * 4
-      out.push({ u: (x + 0.5) / w, v: 1 - (y + 0.5) / h, r: data[i] / 255, g: data[i + 1] / 255, b: data[i + 2] / 255 })
-    }
-  }
-  // Trim or top up to exactly `count` (top-ups double up on existing points, which is invisible).
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1))
-    ;[out[i], out[j]] = [out[j], out[i]]
-  }
-  while (out.length < count) out.push(out[Math.floor(rand() * out.length)])
-  return out.slice(0, count)
+      return { u: (x + 0.5) / w, v: 1 - (y + 0.5) / h, r: data[i] / 255, g: data[i + 1] / 255, b: data[i + 2] / 255 }
+    },
+  )
 }
 
-function buildGeometry(face: Img, depth: Img) {
+/**
+ * Points over a logo's mark (anything that differs from the background, read off the corners), in -1..1 keeping
+ * the aspect, with colours lifted so they read on the dark Experience chapter.
+ */
+function sampleLogo(image: Img, count: number, rand: () => number) {
+  const w = 200
+  const h = Math.max(1, Math.round(w / (image.width / image.height)))
+  const d = pixels(image, w, h)
+  const corner = (x: number, y: number) => [d[(y * w + x) * 4], d[(y * w + x) * 4 + 1], d[(y * w + x) * 4 + 2]]
+  const cs = [corner(1, 1), corner(w - 2, 1), corner(1, h - 2), corner(w - 2, h - 2)]
+  const bg = [0, 1, 2].map((k) => cs.reduce((a, c) => a + c[k], 0) / 4)
+  const fg = (x: number, y: number) => {
+    const i = (y * w + x) * 4
+    const dist = Math.hypot(d[i] - bg[0], d[i + 1] - bg[1], d[i + 2] - bg[2]) / 441
+    return Math.min(1, Math.max(0, (dist - 0.1) / 0.18))
+  }
+  const k = Math.max(w, h) / 2
+  return stratified(w, h, count, rand, fg, (x, y) => {
+    const i = (y * w + x) * 4
+    let r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255
+    const lum = 0.3 * r + 0.59 * g + 0.11 * b
+    const lift = Math.min(1, Math.max(0, (0.6 - lum) * 1.3))
+    r += (0.86 - r) * lift
+    g += (0.9 - g) * lift
+    b += (1 - b) * lift
+    return { x: (x - w / 2) / k, y: -(y - h / 2) / k, r, g, b }
+  })
+}
+
+function buildGeometry(face: Img, depth: Img, logos: Img[]) {
   const rand = mulberry32(7)
   const slots = FIELD_WIDTHS.reduce((a, b) => a + b, 0) + FIELD_GAP * (FIELD_WIDTHS.length - 1)
 
@@ -98,49 +135,48 @@ function buildGeometry(face: Img, depth: Img) {
   }
   const n = cells.length
 
-  // Portrait samples mapped onto table cells band by band (top of the face → top rows of the table),
-  // so the dissolve reads as the image unfolding into rows.
+  // Portrait samples mapped onto table cells band by band (top of the face → top rows of the table).
   const samples = samplePortrait(face, depth, n, rand).sort((p, q) => q.v - p.v)
   const perRow = n / ROWS
   const ordered = Array.from({ length: ROWS }, (_, row) =>
     samples.slice(Math.round(row * perRow), Math.round((row + 1) * perRow)).sort((p, q) => p.u - q.u),
   ).flat()
 
-  const heights = Array.from({ length: TOWERS }, (_, k) => towerHeight(k))
-  const heightSum = heights.reduce((a, b) => a + b, 0)
+  // Logo targets in a texture: row block per logo, one texel per particle (xy position, rgb colour).
+  const rowsPer = Math.ceil(n / LOGO_TEX_W)
+  const logoPos = new Float32Array(LOGO_TEX_W * rowsPer * LOGOS.length * 4)
+  const logoCol = new Uint8Array(LOGO_TEX_W * rowsPer * LOGOS.length * 4)
+  logos.forEach((img, li) => {
+    const pts = sampleLogo(img, n, rand)
+    pts.forEach((p, i) => {
+      const t = (li * rowsPer * LOGO_TEX_W + i) * 4
+      logoPos.set([p.x, p.y, 0, 1], t)
+      logoCol.set([p.r * 255, p.g * 255, p.b * 255, 255], t)
+    })
+  })
+  const mkTex = (data: Float32Array | Uint8Array, type: typeof FloatType | typeof UnsignedByteType) => {
+    const tex = new DataTexture(data, LOGO_TEX_W, rowsPer * LOGOS.length, RGBAFormat, type)
+    tex.minFilter = tex.magFilter = NearestFilter
+    tex.needsUpdate = true
+    return tex
+  }
 
   const attr = (size: number) => new Float32Array(n * size)
   const table = attr(3), portraitUv = attr(2), portraitColor = attr(3), meta = attr(4)
-  const horizon = attr(3), timeline = attr(4), sphere = attr(4)
+  const scatter = attr(3), rnd = attr(4), sphere = attr(4)
 
   cells.forEach((cell, i) => {
     table.set([TABLE_CENTER.x + cell.x, TABLE_CENTER.y + cell.y, TABLE_CENTER.z], i * 3)
-
     const p = ordered[i] ?? ordered[ordered.length - 1]
     portraitUv.set([p.u, p.v], i * 2)
     portraitColor.set([p.r, p.g, p.b], i * 3)
-
-    const t0 = rand()
     // t0 · table → next stagger (left-to-right sweep) · dissolve delay (matches the image front) · table dot size
-    meta.set([t0, cell.xn * 0.36 + rand() * 0.1, ((1 - p.v) * 0.75 + rand() * 0.25) * 0.6, cell.size], i * 4)
-
-    // Horizon: a thin band low across the page.
-    horizon.set([rand() * 2.3 - 1.15, -0.88 + (rand() - 0.5) * 0.03, (rand() - 0.5) * 0.1], i * 3)
-
-    // Skyline: a ground line plus towers made of "windows" (columns × floors).
-    if (rand() < 0.2) {
-      timeline.set([-0.8 + rand() * (TOWERS - 1 + 1.6), (rand() - 0.5) * 0.012, (rand() - 0.5) * 0.04, -1], i * 4)
-    } else {
-      let pick = rand() * heightSum
-      let k = 0
-      while (pick > heights[k] && k < TOWERS - 1) pick -= heights[k++]
-      const floors = Math.round(heights[k] / 0.05)
-      const col = Math.floor(rand() * 5)
-      const floor = Math.floor(rand() * floors)
-      timeline.set([k + (col / 4 - 0.5) * 0.085, ((floor + 0.5) / floors) * heights[k], (rand() - 0.5) * 0.05, k], i * 4)
-    }
-
-    // Resting cloud (Work + Stack, invisible): a sphere the particles wait on before regathering at Contact.
+    meta.set([rand(), cell.xn * 0.36 + rand() * 0.1, ((1 - p.v) * 0.75 + rand() * 0.25) * 0.6, cell.size], i * 4)
+    // Field noise: anywhere on screen.
+    scatter.set([rand() * 2.2 - 1.1, rand() * 2.1 - 1.05, (rand() - 0.5) * 0.3], i * 3)
+    // id + three independent randoms for the procedural shapes.
+    rnd.set([i, rand(), rand(), rand()], i * 4)
+    // Resting cloud (certificates + stack, invisible).
     const sy = 1 - (2 * (i + 0.5)) / n
     const sr = Math.sqrt(1 - sy * sy)
     sphere.set([Math.cos(i * 2.399963) * sr, sy, Math.sin(i * 2.399963) * sr, 0], i * 4)
@@ -151,23 +187,29 @@ function buildGeometry(face: Img, depth: Img) {
   geometry.setAttribute('aPortrait', new BufferAttribute(portraitUv, 2))
   geometry.setAttribute('aPColor', new BufferAttribute(portraitColor, 3))
   geometry.setAttribute('aMeta', new BufferAttribute(meta, 4))
-  geometry.setAttribute('aHorizon', new BufferAttribute(horizon, 3))
-  geometry.setAttribute('aTimeline', new BufferAttribute(timeline, 4))
+  geometry.setAttribute('aScatter', new BufferAttribute(scatter, 3))
+  geometry.setAttribute('aRand', new BufferAttribute(rnd, 4))
   geometry.setAttribute('aSphere', new BufferAttribute(sphere, 4))
-  return geometry
+  return { geometry, n, rowsPer, logoPos: mkTex(logoPos, FloatType), logoCol: mkTex(logoCol, UnsignedByteType) }
 }
 
 const vertexShader = /* glsl */ `
+  #define MAX_NODES ${MAX_NODES}
   uniform mat4 uPortraitM;
   uniform vec2 uPortraitSize, uPortraitOffset, uEndSize, uEndOffset, uHalf;
-  uniform vec3 uCenter;
-  uniform float uTableScale, uTime, uShape, uLight, uTrackBase, uSlideW, uActive, uTowerScale, uScale, uDpr, uNarrow;
-  uniform float uReform;
+  uniform vec3 uCenter, uRegion;
+  uniform float uTableScale, uTime, uShape, uLight, uScale, uDpr, uNarrow, uReform, uCount;
+  uniform float uField, uStat, uLogo, uPipe, uLit0, uLit1, uRowsPer;
+  uniform sampler2D tLogoPos, tLogoCol;
+  uniform vec4 uNodes0[MAX_NODES];
+  uniform vec4 uNodes1[MAX_NODES];
+  uniform float uNodeCount0, uNodeCount1;
+  uniform vec2 uNodeHalf;
   attribute vec2 aPortrait;
-  attribute vec3 aPColor, aHorizon;
+  attribute vec3 aPColor, aScatter;
   attribute vec4 aSphere;   // resting-cloud position
   attribute vec4 aMeta;     // t0, table stagger, dissolve delay, table size
-  attribute vec4 aTimeline; // slide units, height above ground, depth, tower (-1 = ground)
+  attribute vec4 aRand;     // id, r1, r2, r3
   varying vec3 vColor;
   varying float vAlpha;
 
@@ -175,13 +217,16 @@ const vertexShader = /* glsl */ `
   const vec3 LIGHT_INK = vec3(0.05, 0.08, 0.16);
   const vec3 DARK_ACC = vec3(0.33, 0.6, 1.0);
   const vec3 LIGHT_ACC = vec3(0.14, 0.35, 0.84);
+  const float PI = 3.14159265;
 
   float easeInOut(float t) {
     return t < 0.5 ? 4.0 * t * t * t : 1.0 - pow(-2.0 * t + 2.0, 3.0) / 2.0;
   }
   // Normalised view coordinates (x, y in -1..1 of the viewport) → world, on the shared plane.
   vec3 norm(vec3 n) { return uCenter + vec3(n.x * uHalf.x, n.y * uHalf.y, n.z * uHalf.y); }
-  float towerAct() { return aTimeline.w < 0.0 ? 0.0 : 1.0 - clamp(abs(aTimeline.w - uActive), 0.0, 1.0); }
+  // A point in the chapter's visual region; local units keep a square aspect.
+  vec3 region(vec2 l) { return norm(vec3(uRegion.x + l.x * uRegion.z * uHalf.y / uHalf.x, uRegion.y + l.y * uRegion.z, 0.0)); }
+
   vec3 cloudPos() {
     float a = uTime * 0.08;
     vec3 v = aSphere.xyz;
@@ -189,18 +234,121 @@ const vertexShader = /* glsl */ `
     return uCenter + v * uHalf.y * 0.6;
   }
 
+  // ---- 2: the manifesto field, noise → grid
+  vec3 fieldPos() {
+    float cols = floor(sqrt(uCount * uHalf.x / uHalf.y));
+    float rows = ceil(uCount / cols);
+    float gx = mod(aRand.x, cols) / (cols - 1.0) * 2.0 - 1.0;
+    float gy = floor(aRand.x / cols) / (rows - 1.0) * 2.0 - 1.0;
+    vec3 grid = vec3(gx * 1.02, gy * 1.02 + sin(gx * 4.0 + uTime * 0.6) * 0.008, 0.0);
+    float k = easeInOut(clamp(uField * 1.25 - aRand.y * 0.25, 0.0, 1.0));
+    vec3 drift = vec3(sin(uTime * 0.3 + aRand.z * 6.28), cos(uTime * 0.27 + aRand.w * 6.28), 0.0) * 0.02 * (1.0 - k);
+    return norm(mix(aScatter, grid, k) + drift);
+  }
+
+  // ---- 3: stat visuals (local units, -1..1)
+  vec2 statShape(int k) {
+    if (k == 0) {
+      // Bars, rising left to right.
+      float b = floor(aRand.y * 8.0);
+      float h = 0.34 + b * 0.085 + 0.05 * sin(b * 1.7);
+      return vec2(-0.82 + b * 0.234 + (aRand.z - 0.5) * 0.16, -0.85 + aRand.w * h * 1.9);
+    }
+    if (k == 1) {
+      // An 80% ring, drawn clockwise from the top; a few dots mark the missing 20%.
+      bool arc = aRand.w < 0.9;
+      float a = PI * 0.5 - (arc ? aRand.y * 0.8 : 0.8 + aRand.y * 0.2) * 2.0 * PI;
+      float r = (arc ? 0.78 : 0.78) + (aRand.z - 0.5) * (arc ? 0.12 : 0.02);
+      return vec2(cos(a), sin(a)) * r;
+    }
+    if (k == 2) {
+      // Four certification badges.
+      float c = floor(aRand.y * 4.0);
+      vec2 o = vec2(-0.72 + c * 0.48, 0.0);
+      float a = aRand.z * 2.0 * PI;
+      float rr = aRand.w < 0.55 ? 0.2 : sqrt(aRand.w) * 0.15;
+      return o + vec2(cos(a), sin(a)) * rr;
+    }
+    // Two years: two clusters joined by a line.
+    if (aRand.w < 0.22) return vec2(mix(-0.55, 0.55, aRand.y), (aRand.z - 0.5) * 0.02);
+    vec2 o = vec2(aRand.w < 0.61 ? -0.55 : 0.55, 0.0);
+    float a = aRand.y * 2.0 * PI;
+    return o + vec2(cos(a), sin(a)) * sqrt(aRand.z) * 0.3;
+  }
+  vec3 statPos() {
+    float s = clamp(uStat, 0.0, 3.0);
+    int i = int(min(floor(s), 2.0));
+    float k = easeInOut(clamp((s - float(i)) * 1.15 - aRand.y * 0.15, 0.0, 1.0));
+    return region(mix(statShape(i), statShape(i + 1), k));
+  }
+
+  // ---- 4: company logos from the sampled texture
+  vec4 logoTexel(sampler2D t, float logo) {
+    float idx = aRand.x + logo * uRowsPer * 128.0;
+    vec2 uv = (vec2(mod(idx, 128.0), floor(idx / 128.0)) + 0.5) / vec2(128.0, uRowsPer * 5.0);
+    return texture2D(t, uv);
+  }
+  vec3 logoPos() {
+    float s = clamp(uLogo, 0.0, 4.0);
+    float i = min(floor(s), 3.0);
+    float k = easeInOut(clamp((s - i) * 1.2 - aRand.y * 0.2, 0.0, 1.0));
+    vec2 a = logoTexel(tLogoPos, i).xy;
+    vec2 b = logoTexel(tLogoPos, i + 1.0).xy;
+    vec2 swirl = vec2(-a.y, a.x) * sin(k * PI) * 0.35;
+    return region(mix(a, b, k) * 0.82 + swirl);
+  }
+  vec3 logoColor() {
+    float s = clamp(uLogo, 0.0, 4.0);
+    float i = min(floor(s), 3.0);
+    float k = easeInOut(clamp((s - i) * 1.2 - aRand.y * 0.2, 0.0, 1.0));
+    return mix(logoTexel(tLogoCol, i).rgb, logoTexel(tLogoCol, i + 1.0).rgb, k);
+  }
+
+  // ---- 5: pipelines — dots on the step boxes, the rest streaming along the edges
+  vec4 nodeAt(int p, int j) { return p == 0 ? uNodes0[j] : uNodes1[j]; }
+  float nodeCount(int p) { return p == 0 ? uNodeCount0 : uNodeCount1; }
+  // xy position (normalised view), z: 1 on an edge else 0, w: how lit this dot is.
+  vec4 pipeShape(int p) {
+    float cnt = nodeCount(p);
+    int j = int(min(floor(aRand.z * cnt), cnt - 1.0));
+    vec4 a = nodeAt(p, j);
+    float lit = p == 0 ? uLit0 : uLit1;
+    bool hasNext = j + 1 < int(cnt) && nodeAt(p, j + 1).z == a.z;
+    if (aRand.w > 0.5 && hasNext) {
+      vec4 b = nodeAt(p, j + 1);
+      float t = fract(aRand.y + uTime * (0.07 + aRand.w * 0.05));
+      vec2 from = a.xy + vec2(uNodeHalf.x, 0.0) * (uNarrow > 0.5 ? 0.0 : 1.0) + vec2(0.0, -uNodeHalf.y) * uNarrow;
+      vec2 to = b.xy - vec2(uNodeHalf.x, 0.0) * (uNarrow > 0.5 ? 0.0 : 1.0) + vec2(0.0, uNodeHalf.y) * uNarrow;
+      vec2 q = mix(from, to, t) + vec2(0.0, (aRand.y - 0.5) * 0.004);
+      float on = smoothstep(a.w + 0.5, a.w + 1.0, lit);
+      return vec4(q, 1.0, on);
+    }
+    // On the box: its outline only, so the step label inside stays clean.
+    vec2 h = uNodeHalf;
+    vec2 q;
+    {
+      float u = aRand.y * 4.0;
+      if (u < 1.0) q = vec2(mix(-h.x, h.x, u), h.y);
+      else if (u < 2.0) q = vec2(h.x, mix(h.y, -h.y, u - 1.0));
+      else if (u < 3.0) q = vec2(mix(h.x, -h.x, u - 2.0), -h.y);
+      else q = vec2(-h.x, mix(-h.y, h.y, u - 3.0));
+    }
+    return vec4(a.xy + q, 0.0, smoothstep(a.w - 0.1, a.w + 0.4, lit));
+  }
+  vec3 pipePos() {
+    float s = clamp(uPipe, 0.0, 1.0);
+    float k = easeInOut(clamp(s * 1.2 - aRand.y * 0.2, 0.0, 1.0));
+    return norm(vec3(mix(pipeShape(0).xy, pipeShape(1).xy, k), 0.0));
+  }
+
   vec3 shapePos(int s) {
     if (s == 0) return (uPortraitM * vec4((aPortrait - 0.5) * uPortraitSize + uPortraitOffset, 0.0, 1.0)).xyz;
     if (s == 1) return uCenter + (position - uCenter) * vec3(uTableScale, uTableScale, 1.0);
-    if (s == 2) {
-      vec3 h = aHorizon;
-      h.y += sin(h.x * 3.0 + uTime * 0.5) * 0.015 - uNarrow * 0.09;
-      return norm(h);
-    }
-    // 3 (Experience) onwards the particles rest, invisible, until Contact regathers them.
-    if (s == 3) return cloudPos();
-    // 4 (Work) is invisible and already sits on the globe, so Stack simply fades the globe in.
-    if (s == 4 || s == 5) return cloudPos();
+    if (s == 2) return fieldPos();
+    if (s == 3) return statPos();
+    if (s == 4) return logoPos();
+    if (s == 5) return pipePos();
+    if (s == 6) return cloudPos();
     return (uPortraitM * vec4((aPortrait - 0.5) * uEndSize + uEndOffset, 0.0, 1.0)).xyz;
   }
 
@@ -212,34 +360,49 @@ const vertexShader = /* glsl */ `
       return mix(vec3(0.05, 0.07, 0.12), vec3(0.95, 0.96, 1.0), g);
     }
     if (s == 1) return vec3(0.82, 0.88, 1.0);
-    if (s == 6) return aPColor * 1.1;
-    vec3 c = aMeta.x > 0.8 ? acc : ink;
-    if (s == 3) c = mix(c, acc * 1.15, towerAct());
-    return c;
+    if (s == 3) return aMeta.x > 0.85 ? ink : acc;
+    if (s == 4) return logoColor();
+    if (s == 5) {
+      float s2 = clamp(uPipe, 0.0, 1.0);
+      vec4 a = pipeShape(0), b = pipeShape(1);
+      float on = mix(a.w, b.w, step(0.5, s2));
+      float edge = mix(a.z, b.z, step(0.5, s2));
+      return mix(ink * 0.85, acc * (edge > 0.5 ? 1.2 : 1.0), on);
+    }
+    if (s == 7) return aPColor * 1.1;
+    return aMeta.x > 0.8 ? acc : ink;
   }
 
   float shapeAlpha(int s) {
     if (s == 0) return 0.9;
     if (s == 1) return 0.85;
-    if (s == 2) return mix(0.55, 0.3, uNarrow);
-    // On phones the towers sit behind the copy, so they stay a quiet texture.
-    if (s == 3) return 0.0;
-    if (s == 4) return 0.0;
-    if (s == 5) return 0.0;
+    if (s == 2) return mix(0.5, 0.22, smoothstep(0.0, 1.0, uField)) * mix(1.0, 0.7, uNarrow);
+    if (s == 3) return 0.75;
+    if (s == 4) return 0.95;
+    if (s == 5) {
+      float s2 = clamp(uPipe, 0.0, 1.0);
+      vec4 a = pipeShape(0), b = pipeShape(1);
+      float on = mix(a.w, b.w, step(0.5, s2));
+      // Dim through the project-to-project morph so the crossing dots read as a dissolve, not scribbles.
+      float dip = smoothstep(0.1, 0.42, s2) * (1.0 - smoothstep(0.58, 0.9, s2));
+      return (0.32 + on * 0.6) * (1.0 - 0.9 * dip);
+    }
+    if (s == 6) return 0.0;
     return 0.95;
   }
 
   float shapeSize(int s) {
     if (s == 0) return 0.05;
     if (s == 1) return aMeta.w;
-    if (s == 3) return 0.045 + 0.012 * towerAct();
-    if (s == 6) return 0.09;
-    return 0.04;
+    if (s == 2) return 0.032;
+    if (s == 4) return 0.05;
+    if (s == 7) return 0.09;
+    return 0.042;
   }
 
   void main() {
-    float v = clamp(uShape, 0.0, 6.0);
-    int i = int(min(floor(v), 5.0));
+    float v = clamp(uShape, 0.0, 7.0);
+    int i = int(min(floor(v), 6.0));
     float f = v - float(i);
     float k;
     if (i == 0) k = easeInOut(clamp((f - aMeta.z) / 0.38, 0.0, 1.0));
@@ -247,7 +410,7 @@ const vertexShader = /* glsl */ `
     else k = easeInOut(clamp((f - aMeta.x * 0.3) / 0.7, 0.0, 1.0));
 
     // Mid-morph each point arcs out toward the camera, then settles into the next shape.
-    float flight = sin(k * 3.14159);
+    float flight = sin(k * PI);
     vec3 scatter = vec3(aMeta.x - 0.5, fract(aMeta.x * 7.13) - 0.5, 0.35) * uHalf.y * 0.35;
     vec3 p = mix(shapePos(i), shapePos(i + 1), k) + scatter * flight;
 
@@ -275,11 +438,19 @@ const fragmentShader = /* glsl */ `
   }
 `
 
+const emptyNodes = () => Array.from({ length: MAX_NODES }, () => new Vector4())
+
 export function Particles() {
-  const [face, depth] = useTexture(PORTRAIT_TEXTURES)
+  const [face, depth, ...logoTex] = useTexture([...PORTRAIT_TEXTURES, ...LOGOS])
   const points = useRef<Points>(null)
+  const narrowRef = useRef<boolean | null>(null)
 
   const { geometry, material } = useMemo(() => {
+    const built = buildGeometry(
+      face.image as HTMLImageElement,
+      depth.image as HTMLImageElement,
+      logoTex.map((t) => t.image as HTMLImageElement),
+    )
     const mat = new ShaderMaterial({
       vertexShader,
       fragmentShader,
@@ -293,21 +464,34 @@ export function Particles() {
         uEndOffset: { value: new Vector2() },
         uHalf: { value: new Vector2(1, 1) },
         uCenter: { value: TABLE_CENTER },
+        uRegion: { value: { x: 0, y: 0, z: 1 } },
         uTableScale: { value: 1 },
         uTime: { value: 0 },
         uShape: { value: 0 },
         uLight: { value: 0 },
-        uTrackBase: { value: 0 },
-        uSlideW: { value: 1 },
-        uActive: { value: 0 },
-        uTowerScale: { value: 1 },
         uNarrow: { value: 0 },
         uScale: { value: 800 },
         uDpr: { value: 1 },
         uReform: { value: 0 },
+        uCount: { value: built.n },
+        uRowsPer: { value: built.rowsPer },
+        uField: { value: 0 },
+        uStat: { value: 0 },
+        uLogo: { value: 0 },
+        uPipe: { value: 0 },
+        uLit0: { value: 0 },
+        uLit1: { value: 0 },
+        tLogoPos: { value: built.logoPos },
+        tLogoCol: { value: built.logoCol },
+        uNodes0: { value: emptyNodes() },
+        uNodes1: { value: emptyNodes() },
+        uNodeCount0: { value: 1 },
+        uNodeCount1: { value: 1 },
+        uNodeHalf: { value: new Vector2(0.08, 0.05) },
       },
     })
-    return { geometry: buildGeometry(face.image as HTMLImageElement, depth.image as HTMLImageElement), material: mat }
+    return { geometry: built.geometry, material: mat }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [face, depth])
 
   useFrame((state) => {
@@ -315,6 +499,23 @@ export function Particles() {
     const tan = Math.tan((cam.fov * Math.PI) / 360)
     const halfH = (cam.position.z - TABLE_CENTER.z) * tan
     const u = material.uniforms
+    const narrow = state.size.width / state.size.height < 0.85
+
+    // Layouts depend only on the breakpoint: rebuild the pipeline nodes when it flips.
+    if (narrowRef.current !== narrow) {
+      narrowRef.current = narrow
+      const r = visualRegion(narrow)
+      u.uRegion.value = { x: r.cx, y: r.cy, z: r.s }
+      const h = nodeHalf(narrow)
+      u.uNodeHalf.value.set(h.x, h.y)
+      WORK.slice(0, 2).forEach((cs, p) => {
+        const nodes = pipelineLayout(cs, narrow)
+        const arr = u[`uNodes${p}`].value as Vector4[]
+        nodes.forEach((nd, j) => arr[j].set(nd.x, nd.y, nd.lane, nd.step))
+        u[`uNodeCount${p}`].value = nodes.length
+      })
+    }
+
     points.current!.visible = frame.shape > 0.001
     u.uHalf.value.set(halfH * cam.aspect, halfH)
     u.uScale.value = (state.size.height * state.viewport.dpr) / (2 * tan)
@@ -323,12 +524,14 @@ export function Particles() {
     u.uTime.value = state.clock.elapsedTime
     u.uShape.value = frame.shape
     u.uLight.value = frame.light
-    u.uTrackBase.value = frame.trackBase
-    u.uSlideW.value = frame.slideW
-    u.uActive.value = frame.activeTower
-    u.uTowerScale.value = frame.towerScale
-    u.uNarrow.value = state.size.width / state.size.height < 0.85 ? 1 : 0
+    u.uNarrow.value = narrow ? 1 : 0
     u.uReform.value = frame.reform
+    u.uField.value = frame.field
+    u.uStat.value = frame.stat
+    u.uLogo.value = frame.logo
+    u.uPipe.value = frame.pipe
+    u.uLit0.value = frame.lit0
+    u.uLit1.value = frame.lit1
     u.uPortraitM.value.copy(portrait.matrix)
     u.uPortraitSize.value.copy(portrait.size)
     u.uPortraitOffset.value.copy(portrait.offset)

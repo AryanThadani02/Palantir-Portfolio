@@ -1,15 +1,18 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import { PROFILE } from '../data/ontology'
 import { CERTIFICATIONS, SKILLS } from '../data/content'
 import { overlayRefs, useIntroDone } from '../lib/store'
 import { scrollToTarget } from '../lib/scroll'
+import { runProgress } from '../lib/runs'
 import { pointer } from '../lib/pointer'
 import { useMagnetic } from '../lib/useMagnetic'
-import { StackPlayground } from './StackPlayground'
-import { About, ExperienceSection, Work } from './Chapters'
+import { About, ExperienceSection, Numbers, Work } from './Chapters'
 import { SectionHead } from './common'
 import { CertAssembly } from './CertAssembly'
 import { IconMark } from './Logo'
+
+// The physics playground (and matter-js) loads on its own, after the first paint.
+const StackPlayground = lazy(() => import('./StackPlayground').then((m) => ({ default: m.StackPlayground })))
 
 const NAV = [
   { id: 'about', label: 'About' },
@@ -54,6 +57,7 @@ export function Page() {
           </div>
         </section>
         <About />
+        <Numbers />
         <ExperienceSection />
         <Work />
         <Certifications />
@@ -159,7 +163,7 @@ function IntroCaption() {
 
 function Stack() {
   return (
-    <section id="stack" className="section stack" data-theme="dark" data-shape="5" data-film="6">
+    <section id="stack" className="section stack" data-theme="dark" data-film="6">
       <SectionHead index="05" label="Stack" aside={`${SKILLS.length} tools`} />
       <h2 className="stack__title skew" data-reveal>
         <span className="mask-line">
@@ -171,19 +175,87 @@ function Stack() {
           </span>
         </span>
       </h2>
-      <StackPlayground />
+      <Suspense fallback={<div className="play" aria-hidden />}>
+        <StackPlayground />
+      </Suspense>
     </section>
   )
 }
 
+/**
+ * Pinned horizontal track: vertical scroll slides the credentials left to right; whichever card reaches the
+ * centre assembles itself out of particles and becomes the clickable one.
+ */
 function Certifications() {
+  const run = useRef<HTMLElement>(null)
+  const track = useRef<HTMLDivElement>(null)
+  const [centre, setCentre] = useState(-1)
+  const n = CERTIFICATIONS.length
+
+  useEffect(() => {
+    let id = 0
+    let last = -2
+    const tick = () => {
+      const el = run.current
+      const tr = track.current
+      if (el && tr) {
+        const p = runProgress(el)
+        el.style.setProperty('--p', p.toFixed(4))
+        const cards = [...tr.children] as HTMLElement[]
+        const first = cards[0]
+        const lastCard = cards[cards.length - 1]
+        if (first && lastCard) {
+          // Slide so card k is centred at p = k / (n - 1).
+          const start = first.offsetLeft + first.offsetWidth / 2
+          const end = lastCard.offsetLeft + lastCard.offsetWidth / 2
+          const x = start + (end - start) * p - innerWidth / 2
+          tr.style.transform = `translate3d(${(-x).toFixed(1)}px, 0, 0)`
+          const mid = innerWidth / 2
+          let best = -1
+          cards.forEach((c, k) => {
+            const r = c.getBoundingClientRect()
+            const off = (r.left + r.width / 2 - mid) / innerWidth
+            c.style.setProperty('--off', off.toFixed(3))
+            if (Math.abs(off) < 0.12) best = k
+          })
+          // Only once the section actually holds the screen.
+          const r = el.getBoundingClientRect()
+          if (r.top > innerHeight * 0.3 || r.bottom < innerHeight * 0.7) best = -1
+          if (best !== last) {
+            last = best
+            setCentre(best)
+          }
+        }
+      }
+      id = requestAnimationFrame(tick)
+    }
+    id = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(id)
+  }, [])
+
   return (
-    <section id="certifications" className="section certs" data-theme="dark" data-film="3.5">
-      <SectionHead index="04" label="Certifications" aside="Palantir Technologies" />
-      <div className="holo-grid">
-        {CERTIFICATIONS.map((c, i) => (
-          <HoloCard key={c.id} cert={c} index={i} />
-        ))}
+    <section
+      ref={run}
+      id="certifications"
+      className="run certs-run"
+      data-theme="dark"
+      data-shape="6"
+      data-film-run="10"
+      style={{ '--n': n } as CSSProperties}
+    >
+      <div className="run__sticky">
+        <div className="certs-run__head">
+          <SectionHead index="04" label="Certifications" aside="Palantir Technologies · Verified on Skilljar" />
+          <p className="certs-run__count" aria-hidden>
+            <b>{String(Math.max(0, centre) + 1).padStart(2, '0')}</b> / {String(n).padStart(2, '0')}
+          </p>
+        </div>
+        <div ref={track} className="certs-track">
+          {CERTIFICATIONS.map((c, i) => (
+            <HoloCard key={c.id} cert={c} index={i} centred={centre === i} />
+          ))}
+        </div>
+        <span className="certs-run__hint">{pointer.coarse ? 'Tap the card to verify' : 'Click the card to verify'}</span>
       </div>
     </section>
   )
@@ -193,10 +265,13 @@ function Certifications() {
  * A credential card: tilts toward the pointer under a holographic sheen. Hovering assembles the certificate
  * out of particles; clicking opens the verification link (on touch, the first tap assembles).
  */
-function HoloCard({ cert, index }: { cert: (typeof CERTIFICATIONS)[number]; index: number }) {
+function HoloCard({ cert, index, centred }: { cert: (typeof CERTIFICATIONS)[number]; index: number; centred: boolean }) {
   const { title, date, image, url } = cert
   const ref = useRef<HTMLAnchorElement>(null)
-  const [active, setActive] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  // Centred in the track (or hovered) = assembled and clickable.
+  const active = centred || hovered
+  const setActive = setHovered
   const move = (e: PointerEvent<HTMLAnchorElement>) => {
     const el = ref.current!
     if (e.pointerType !== 'mouse') return
@@ -220,7 +295,7 @@ function HoloCard({ cert, index }: { cert: (typeof CERTIFICATIONS)[number]; inde
   }
 
   return (
-    <div className="holo-wrap" data-reveal style={{ '--d': `${index * 90}ms` } as CSSProperties}>
+    <div className={`holo-wrap ${centred ? 'is-centred' : ''}`}>
       <a
         ref={ref}
         className={`holo ${active ? 'is-assembled' : ''} ${url ? '' : 'is-pending'}`}
@@ -231,6 +306,9 @@ function HoloCard({ cert, index }: { cert: (typeof CERTIFICATIONS)[number]; inde
         onPointerMove={move}
         onPointerEnter={(e) => e.pointerType === 'mouse' && setActive(true)}
         onPointerLeave={leave}
+        // Keyboard: focusing a card assembles it, so Enter goes straight to verification.
+        onFocus={() => setActive(true)}
+        onBlur={leave}
         onClick={(e) => {
           if (!active || !url) {
             e.preventDefault()
