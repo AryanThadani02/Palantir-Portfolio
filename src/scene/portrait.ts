@@ -1,9 +1,14 @@
 import { Matrix4, Vector2, Vector3 } from 'three'
 import type { PerspectiveCamera } from 'three'
 
-export const PORTRAIT_TEXTURES = ['/hero/face.webp', '/hero/depth.png']
+/**
+ * The headshot at 1672×941, or 2× for screens with the pixels to show it (retina laptops, and phones, which
+ * crop into the photo to cover a tall screen).
+ */
+const SHARP = Math.max(screen.width, screen.height, innerWidth, innerHeight) * devicePixelRatio > 1700
+export const PORTRAIT_TEXTURES = [SHARP ? '/hero/face@2x.webp' : '/hero/face.webp', '/hero/depth.png']
 
-/** Source image aspect (headshot-final is 1672×941). */
+/** Source image aspect (headshot-final is 6688×3764, served at 1672×941 and 3344×1882). */
 export const PORTRAIT_ASPECT = 1672 / 941
 
 /** Centre of the face (uv, y up): the tilt pivot and the autopilot's path. Measured on headshot-final. */
